@@ -32,6 +32,28 @@ OFF, STARTING, RUNNING, PAUSED, LOCKED, CAMERA_BUSY, ERROR = (
     "off", "starting", "running", "paused", "locked", "camera busy", "error")
 
 
+def create_recognizer(strictness: float = 0.7):
+    """MediaPipe gesture recognizer in VIDEO mode, model loaded from the bundled file."""
+    from mediapipe.tasks.python import vision
+    from mediapipe.tasks.python.core.base_options import BaseOptions
+
+    # Load from bytes: no path/encoding issues, and clearly nothing fetched remotely.
+    model = model_path().read_bytes()
+    options = vision.GestureRecognizerOptions(
+        base_options=BaseOptions(model_asset_buffer=model),
+        running_mode=vision.RunningMode.VIDEO,
+        # Two hands: if something that isn't a hand (a shadow on clothing) gets
+        # picked up, your real hand still has a free slot and is detected.
+        num_hands=2,
+        # Presence = "is this still a hand?" from the landmark model. Keeping it
+        # high makes MediaPipe drop false hands instead of tracking them forever.
+        min_hand_detection_confidence=strictness,
+        min_hand_presence_confidence=strictness,
+        min_tracking_confidence=max(0.3, strictness - 0.1),
+    )
+    return vision.GestureRecognizer.create_from_options(options)
+
+
 class Tracker(threading.Thread):
     def __init__(self, app) -> None:
         super().__init__(name="tracker", daemon=True)
@@ -128,24 +150,7 @@ class Tracker(threading.Thread):
         if self._recognizer is not None:
             self._recognizer.close()
             self._recognizer = None
-        from mediapipe.tasks.python import vision
-        from mediapipe.tasks.python.core.base_options import BaseOptions
-
-        # Load from bytes: no path/encoding issues, and clearly nothing fetched remotely.
-        model = model_path().read_bytes()
-        options = vision.GestureRecognizerOptions(
-            base_options=BaseOptions(model_asset_buffer=model),
-            running_mode=vision.RunningMode.VIDEO,
-            # Two hands: if something that isn't a hand (a shadow on clothing) gets
-            # picked up, your real hand still has a free slot and is detected.
-            num_hands=2,
-            # Presence = "is this still a hand?" from the landmark model. Keeping it
-            # high makes MediaPipe drop false hands instead of tracking them forever.
-            min_hand_detection_confidence=strictness,
-            min_hand_presence_confidence=strictness,
-            min_tracking_confidence=max(0.3, strictness - 0.1),
-        )
-        self._recognizer = vision.GestureRecognizer.create_from_options(options)
+        self._recognizer = create_recognizer(strictness)
         self._recognizer_strictness = strictness
         self._last_ts = 0
         log.info("Hand detector ready (strictness %.2f)", strictness)

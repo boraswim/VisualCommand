@@ -21,14 +21,16 @@ Run `VisualCommand-Setup-x.y.z.exe`. It installs for your user only, with no adm
   - Open screenshots folder
   - Quit
 - **Gestures tab**: pick an action for any gesture. Gestures set to *nothing* cost nothing. **Test** runs the action straight away.
-- **Sensitivity tab**: hold time, cooldown, pose confidence, swipe distance and frame rates.
+- **Sensitivity tab**: hand detection strictness, hold time, cooldown, pose confidence and frame rates.
 - **General tab**:
   - camera choice and the camera's own settings dialog
   - low-light boost (Auto / Always / Off)
   - an optional *safety gesture*, which must be shown before any other gesture works
 - **Show preview** opens a live view with the hand skeleton, the detected pose, the lighting state and the processing time. It is not recorded.
 
-Default mappings: 👍 screenshot · ✊ mute/unmute mic · ✌️ lock PC · swipe ⬅️/➡️ previous/next track.
+Default mappings: 👍 screenshot · ✊ mute/unmute mic · ✌️ lock PC.
+
+All gestures are hand poses: hold the pose for a moment (0.4 s by default) and the action runs once. Lower your hand or change pose before it can run again. Moving gestures such as swipes were removed in 0.1.3 because webcam motion blur made them unreliable.
 
 Screenshots go to `Pictures\VisualCommand`. Settings and a small text log, which records only gesture names, are kept in `%APPDATA%\VisualCommand`.
 
@@ -78,24 +80,16 @@ The version comes from `visualcommand/__init__.py`.
 Add a class to any module in `visualcommand/gestures/`. New modules are picked up automatically. It appears in the Gestures tab without any UI changes.
 
 ```python
-from visualcommand.gestures.base import PoseGesture, MotionGesture, register_gesture
+from visualcommand.gestures.base import PoseGesture, register_gesture
 
 @register_gesture
-class ThumbLeft(PoseGesture):              # a pose: return a 0..1 score every frame
+class ThumbLeft(PoseGesture):              # return a 0..1 score every frame
     id, name, icon, order = "Thumb_Left", "Thumb left", "👈", 30
     description = "Fist with the thumb pointing to your left."
 
     def score(self, f):
         thumb_only = f.extended == (True, False, False, False, False)
         return 0.9 if f.hand and thumb_only and f.landmarks[4][0] < f.landmarks[2][0] else 0.0
-
-@register_gesture
-class FlickDown(MotionGesture):            # a motion: return True once when it completes
-    id, name, icon, order = "Flick_Down", "Flick down", "👇", 90
-    description = "..."
-
-    def update(self, f, settings):
-        ...
 ```
 
 `f` is a `FrameFeatures` object. It provides:
@@ -106,7 +100,7 @@ class FlickDown(MotionGesture):            # a motion: return True once when it 
 - `mp_label` / `mp_score` (MediaPipe's built-in pose)
 - `lighting`
 
-You don't need to write debouncing yourself. The engine handles the hold time, cooldown and "release before firing again" for poses, and the cooldown for motions. Add a test in `tests/test_gestures.py`.
+You don't need to write debouncing yourself. The engine handles the hold time, cooldown and "release before firing again". Add a test in `tests/test_gestures.py`.
 
 **Trained gestures:** for poses that rules can't capture, train a custom model with MediaPipe Model Maker on your own photos. Then replace `models/gesture_recognizer.task` and register a `PoseGesture` per new label. The existing `builtin_poses.py` shows how to wrap a model label.
 

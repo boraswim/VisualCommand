@@ -2,17 +2,16 @@
 
 MediaPipe returns hands in no fixed order, so each detection is matched to a
 "slot" by distance to where a hand was last seen. Every slot has its own
-GestureEngine (so a swipe's history follows the hand that is swiping), and a
-gesture fired by either hand is de-duplicated by a shared cooldown.
+GestureEngine (so each hand's hold timer is its own), and a gesture fired by
+either hand is de-duplicated by a shared cooldown.
 """
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
 
-from visualcommand.engine import MOTION_COOLDOWN, ArmState, GestureEngine
+from visualcommand.engine import ArmState, GestureEngine
 from visualcommand.features import FrameFeatures
-from visualcommand.gestures import MOTION, registry
 
 MATCH_DISTANCE = 0.3   # max palm movement between frames to count as the same hand
 FORGET_AFTER = 0.5     # a slot is free again after its hand has been gone this long
@@ -60,7 +59,6 @@ class HandSlots:
     def process(self, t: float, hands: list[FrameFeatures], lighting: str, active_ids: set[str],
                 sens: dict, arm_id: str = "", arm_window: float = 5.0) -> list[str]:
         events: list[str] = []
-        gestures = registry()
         cooldown = sens.get("cooldown", 2.0)
         for slot, f in zip(self.slots, self._assign(t, hands)):
             if f is None:
@@ -69,15 +67,13 @@ class HandSlots:
                 slot.center, slot.last_seen = f.palm_center, t
             slot.current = f
             for gid in slot.engine.process(f, active_ids, sens, arm_id, arm_window):
-                g = gestures.get(gid)
-                cd = min(cooldown, MOTION_COOLDOWN) if g and g.kind == MOTION else cooldown
-                if t - self._last_fire.get(gid, -1e9) < cd:
+                if t - self._last_fire.get(gid, -1e9) < cooldown:
                     continue        # the other hand just did the same thing
                 self._last_fire[gid] = t
                 events.append(gid)
         return events
 
     def suppress(self, t: float, seconds: float) -> None:
-        """Ignore poses for a moment (e.g. right after the camera starts)."""
+        """Ignore gestures for a moment (e.g. right after the camera starts)."""
         for s in self.slots:
-            s.engine._suppress_poses_until = max(s.engine._suppress_poses_until, t + seconds)
+            s.engine.suppress(t + seconds)

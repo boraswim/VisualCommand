@@ -10,7 +10,7 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
-CONFIG_VERSION = 2
+CONFIG_VERSION = 3
 
 DEFAULTS: dict[str, Any] = {
     "version": CONFIG_VERSION,
@@ -32,16 +32,19 @@ DEFAULTS: dict[str, Any] = {
         "hold_time": 0.4,       # seconds a pose must be held
         "cooldown": 2.0,        # seconds before the same gesture can fire again
         "min_score": 0.7,       # pose confidence needed (0..1)
-        "swipe_distance": 0.25, # fraction of the frame a swipe must travel
     },
     # gesture id -> {"action": action id, "params": {...}}
     "mappings": {
         "Thumb_Up": {"action": "screenshot"},
         "Closed_Fist": {"action": "mute_mic"},
         "Victory": {"action": "lock_pc"},
-        "Swipe_Left": {"action": "media_prev"},
-        "Swipe_Right": {"action": "media_next"},
     },
+}
+
+# Motion gestures existed up to 0.1.2 and were removed in 0.1.3.
+_REMOVED_GESTURES = {
+    "Swipe_Left", "Swipe_Right", "Swipe_Up", "Swipe_Down", "Push", "Wave",
+    "Circle_CW", "Circle_CCW", "Pinch_Drag_Up", "Pinch_Drag_Down",
 }
 
 
@@ -70,17 +73,26 @@ class Config:
             loaded = json.loads(self.path.read_text(encoding="utf-8"))
             with self._lock:
                 self.data = _merge(DEFAULTS, loaded)
-                self._migrate(int(loaded.get("version", 1)))
+                migrated = self._migrate(int(loaded.get("version", 1)))
         except Exception:
             log.exception("Config unreadable, using defaults")
+            return
+        if migrated:
+            try:
+                self.save()
+            except OSError:
+                log.exception("Could not save migrated config")
 
-    def _migrate(self, from_version: int) -> None:
-        if from_version < 2:
-            # 0.1.0 shipped a swipe distance that was too demanding; move users who
-            # never changed it to the new default.
-            if self.data["sensitivity"].get("swipe_distance") == 0.3:
-                self.data["sensitivity"]["swipe_distance"] = DEFAULTS["sensitivity"]["swipe_distance"]
+    def _migrate(self, from_version: int) -> bool:
+        """Bring an older config up to date. Returns True if anything changed."""
+        changed = from_version < CONFIG_VERSION
+        if from_version < 3:
+            # Motion gestures (swipes etc.) were removed: drop their settings and mappings.
+            self.data["sensitivity"].pop("swipe_distance", None)
+            for gid in _REMOVED_GESTURES:
+                self.data["mappings"].pop(gid, None)
         self.data["version"] = CONFIG_VERSION
+        return changed
 
     def save(self) -> None:
         with self._lock:

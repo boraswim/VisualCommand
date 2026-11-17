@@ -1,4 +1,4 @@
-"""Gesture catalogue. Every module in this package is imported so its
+"""Gesture catalogue (hand poses). Every module in this package is imported so its
 @register_gesture classes show up in the settings window."""
 from __future__ import annotations
 
@@ -6,11 +6,11 @@ import importlib
 import pkgutil
 
 from visualcommand.gestures.base import (  # noqa: F401  (re-exported)
-    MOTION, POSE, Gesture, MotionGesture, PoseGesture, register_gesture, registry,
+    PoseGesture, register_gesture, registry,
 )
 
 # Listed explicitly so frozen builds always include them; pkgutil picks up any extra modules.
-_BUILTIN_MODULES = ("builtin_poses", "rule_poses", "motions")
+_BUILTIN_MODULES = ("builtin_poses", "rule_poses")
 _loaded = False
 
 
@@ -27,7 +27,7 @@ def load_all() -> None:
     _loaded = True
 
 
-def catalogue() -> list[type[Gesture]]:
-    """All gestures, poses first, in display order."""
+def catalogue() -> list[type[PoseGesture]]:
+    """All gestures in display order."""
     load_all()
-    return sorted(registry().values(), key=lambda g: (g.kind != POSE, g.order, g.name))
+    return sorted(registry().values(), key=lambda g: (g.order, g.name))

@@ -12,7 +12,6 @@ from PIL import ImageTk
 
 from visualcommand import APP_NAME, __version__, actions, gestures, winutil
 from visualcommand.config import DEFAULTS
-from visualcommand.gestures import POSE
 from visualcommand.icon import make_icon
 
 NOTHING = "— nothing —"
@@ -132,15 +131,10 @@ class SettingsWindow:
         body.columnconfigure(1, weight=1)
         action_names = [NOTHING] + [a.name for a in self._actions]
         mappings = self.cfg.mappings()
-        row = 0
-        last_kind = None
+        ttk.Label(body, text="Hand gestures (hold the pose briefly)", style="Section.TLabel").grid(
+            row=0, column=0, columnspan=4, sticky="w", pady=(0, 4))
+        row = 1
         for g in gestures.catalogue():
-            if g.kind != last_kind:
-                last_kind = g.kind
-                title = "Hand poses (hold still)" if g.kind == POSE else "Motions (move your hand)"
-                ttk.Label(body, text=title, style="Section.TLabel").grid(
-                    row=row, column=0, columnspan=4, sticky="w", pady=(10 if row else 0, 4))
-                row += 1
             self._gesture_row(body, row, g, action_names, mappings.get(g.id))
             row += 2
         return outer
@@ -254,7 +248,7 @@ class SettingsWindow:
         ttk.Separator(f).grid(row=r, column=0, columnspan=3, sticky="ew", pady=12)
         r += 1
 
-        poses = [g for g in gestures.catalogue() if g.kind == POSE]
+        poses = gestures.catalogue()
         names = ["Off"] + [g.name for g in poses]
         by_name = {g.name: g.id for g in poses}
         ttk.Label(f, text="Safety gesture").grid(row=r, column=0, sticky="w", pady=4)
@@ -311,13 +305,11 @@ class SettingsWindow:
                "Minimum time before the same gesture can fire again.")
         slider(6, "Pose confidence", "min_score", 0.4, 0.95, "{:.2f}",
                "Higher = fewer accidental triggers, but poses must be clearer.")
-        slider(8, "Swipe distance", "swipe_distance", 0.1, 0.6, "{:.0%}",
-               "How far across the camera view a swipe must travel.")
-        ttk.Separator(f).grid(row=10, column=0, columnspan=3, sticky="ew", pady=12)
-        slider(11, "Idle checks / second", "idle_fps", 1, 10, "{:.0f}",
+        ttk.Separator(f).grid(row=8, column=0, columnspan=3, sticky="ew", pady=12)
+        slider(9, "Idle checks / second", "idle_fps", 1, 10, "{:.0f}",
                "When no hand is visible. Lower uses less CPU but reacts later.", top=True)
-        slider(13, "Tracking frames / second", "active_fps", 5, 30, "{:.0f}",
-               "While a hand is visible. Higher makes swipes more reliable.", top=True)
+        slider(11, "Tracking frames / second", "active_fps", 5, 30, "{:.0f}",
+               "While a hand is visible. Higher reacts faster but uses more CPU.", top=True)
 
         def reset():
             for var, key, top, changed in self._scales:
@@ -325,7 +317,7 @@ class SettingsWindow:
                 changed()   # Scale doesn't call its command for programmatic changes
 
         ttk.Button(f, text="Reset to defaults", command=reset).grid(
-            row=15, column=0, sticky="w", pady=16)
+            row=13, column=0, sticky="w", pady=16)
         return f
 
     def _save_later(self) -> None:

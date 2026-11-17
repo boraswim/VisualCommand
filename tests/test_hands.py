@@ -5,7 +5,7 @@ from visualcommand.config import Config
 from visualcommand.features import FrameFeatures, features_from_landmarks, plausible_hand
 from visualcommand.hands import HandSlots
 
-SENS = {"hold_time": 0.4, "cooldown": 2.0, "min_score": 0.7, "swipe_distance": 0.25}
+SENS = {"hold_time": 0.4, "cooldown": 2.0, "min_score": 0.7}
 OPEN = (True,) * 5
 
 
@@ -40,17 +40,6 @@ def test_hands_keep_their_slot_when_order_swaps():
     slots.process(0.07, [b2, a2], "good", set(), SENS)
     second = [s.current.palm_center for s in slots.slots]
     assert [round(x[0], 1) for x in first] == [round(x[0], 1) for x in second]
-
-
-def test_swipe_with_one_hand_while_other_hand_is_still():
-    slots = HandSlots(2)
-    fired = []
-    ts = steps(0, 0.5)
-    for i, t in enumerate(ts):
-        still = hand(t, (0.8, 0.8), extended=(False,) * 5)
-        moving = hand(t, (0.15 + 0.5 * i / (len(ts) - 1), 0.4))
-        fired += slots.process(t, [still, moving], "good", {"Swipe_Right"}, SENS)
-    assert fired == ["Swipe_Right"]
 
 
 def test_same_pose_with_both_hands_fires_once():
@@ -117,15 +106,19 @@ def test_frame_features_compare_by_identity():
     assert a == a and a != b and a in [a] and b not in [a]
 
 
-def test_old_config_swipe_distance_migrated(tmp_path):
+def test_old_config_loses_motion_mappings_and_swipe_setting(tmp_path):
+    """0.1.3 removed motion gestures: their mappings and settings are dropped and saved."""
+    import json
     p = tmp_path / "config.json"
-    p.write_text('{"version": 1, "sensitivity": {"swipe_distance": 0.3}}', encoding="utf-8")
+    p.write_text(json.dumps({
+        "version": 2,
+        "sensitivity": {"swipe_distance": 0.3, "hold_time": 0.5},
+        "mappings": {"Thumb_Up": {"action": "screenshot"}, "Swipe_Down": {"action": "screenshot"},
+                     "Swipe_Left": {"action": "media_prev"}, "Wave": {"action": "lock_pc"}},
+    }), encoding="utf-8")
     cfg = Config(p)
-    assert cfg.sensitivity()["swipe_distance"] == 0.25
-    assert cfg.get("hand_strictness") == 0.7
-
-
-def test_custom_swipe_distance_kept(tmp_path):
-    p = tmp_path / "config.json"
-    p.write_text('{"version": 1, "sensitivity": {"swipe_distance": 0.4}}', encoding="utf-8")
-    assert Config(p).sensitivity()["swipe_distance"] == 0.4
+    assert cfg.mappings() == {"Thumb_Up": {"action": "screenshot"}}
+    assert "swipe_distance" not in cfg.sensitivity()
+    assert cfg.sensitivity()["hold_time"] == 0.5
+    on_disk = json.loads(p.read_text(encoding="utf-8"))
+    assert on_disk["version"] == 3 and "Swipe_Down" not in on_disk["mappings"]

@@ -23,7 +23,7 @@ def test_old_config_gains_new_keys(tmp_path):
     path.write_text(json.dumps({"sensitivity": {"hold_time": 1.0}, "mappings": {}}), encoding="utf-8")
     cfg = Config(path)
     assert cfg.sensitivity()["hold_time"] == 1.0
-    assert "swipe_distance" in cfg.sensitivity()
+    assert "cooldown" in cfg.sensitivity()
     assert cfg.mappings() == {}          # user's (empty) mapping is kept, not re-filled
     assert cfg.get("lighting_mode") == "auto"
 
