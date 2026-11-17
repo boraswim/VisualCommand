@@ -28,17 +28,24 @@ class ActionSpec:
     group: str = "General"
     params: tuple[Param, ...] = field(default_factory=tuple)
     order: int = 100
+    # > 0: the action waits for confirmation. A popup counts down this many seconds
+    # with Execute / Cancel buttons and runs the action when the countdown ends.
+    confirm_seconds: int = 0
 
+
+# Order of the categories in the action dropdown.
+GROUP_ORDER = ("System", "Media", "Audio", "Power", "VisualCommand", "General")
 
 _REGISTRY: dict[str, ActionSpec] = {}
 
 
 def register_action(id: str, name: str, description: str = "", group: str = "General",
-                    params: tuple[Param, ...] = (), order: int = 100):
+                    params: tuple[Param, ...] = (), order: int = 100, confirm_seconds: int = 0):
     def deco(func: Callable) -> Callable:
         if id in _REGISTRY:
             raise ValueError(f"Duplicate action id {id!r}")
-        _REGISTRY[id] = ActionSpec(id, name, func, description, group, tuple(params), order)
+        _REGISTRY[id] = ActionSpec(id, name, func, description, group, tuple(params), order,
+                                   confirm_seconds)
         return func
     return deco
 

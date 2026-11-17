@@ -72,39 +72,6 @@ def run_command(ctx, params):
     return f"Ran: {cmd}"
 
 
-SHUTDOWN_DELAY = 30
-
-
-def _shutdown_exe() -> str:
-    return os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "shutdown.exe")
-
-
-def _run_shutdown(args: list[str]) -> int:
-    proc = subprocess.run([_shutdown_exe(), *args], capture_output=True,
-                          creationflags=subprocess.CREATE_NO_WINDOW)
-    return proc.returncode
-
-
-@register_action("shutdown_30s", f"Shut down PC in {SHUTDOWN_DELAY} seconds",
-                 "Windows shuts down after a 30 second warning. Map 'Cancel shutdown' to "
-                 "another gesture (or run shutdown /a) to stop it.", "System", order=17)
-def shutdown_30s(ctx, params):
-    code = _run_shutdown(["/s", "/t", str(SHUTDOWN_DELAY), "/c",
-                          f"VisualCommand: shutting down in {SHUTDOWN_DELAY} seconds."])
-    if code != 0:
-        # 1190 = a shutdown is already scheduled
-        return "A shutdown is already scheduled" if code == 1190 else f"Shutdown failed (code {code})"
-    return f"PC shuts down in {SHUTDOWN_DELAY} seconds"
-
-
-@register_action("cancel_shutdown", "Cancel shutdown",
-                 "Stops a scheduled shutdown (from the action above or anywhere else).",
-                 "System", order=18)
-def cancel_shutdown(ctx, params):
-    code = _run_shutdown(["/a"])
-    return "Shutdown cancelled" if code == 0 else "No shutdown was scheduled"
-
-
 @register_action("pause_tracking", "Pause tracking for 10 minutes",
                  "Releases the camera for 10 minutes.", "VisualCommand", order=90)
 def pause_tracking(ctx, params):

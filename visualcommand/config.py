@@ -10,7 +10,7 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
-CONFIG_VERSION = 6
+CONFIG_VERSION = 7
 
 DEFAULTS: dict[str, Any] = {
     "version": CONFIG_VERSION,
@@ -114,6 +114,15 @@ class Config:
             # The old default (flip) was wrong for normal webcams: MediaPipe wants the
             # natural view. Only an explicit orientation check should turn it on.
             self.data["mirror_image"] = False
+        if from_version < 7:
+            # 0.1.13: power actions got a confirmation countdown in the app instead of
+            # Windows' delayed shutdown; "Cancel shutdown" is gone (the popup cancels).
+            maps = self.data["mappings"]
+            for gid, m in list(maps.items()):
+                if m.get("action") == "shutdown_30s":
+                    maps[gid] = {"action": "shutdown", "params": {}}
+                elif m.get("action") == "cancel_shutdown":
+                    del maps[gid]
         self.data["version"] = CONFIG_VERSION
         return changed
 

@@ -102,20 +102,24 @@ class App:
             return
 
         def show():
-            if self.toast is None:
-                from visualcommand.toast import Toast
-                self.toast = Toast(self.root)
-            self.toast.show(title, message, "error" if error else "info")
+            self._toast().show(title, message, "error" if error else "info")
         self.post(show)
 
+    def _toast(self):
+        if self.toast is None:
+            from visualcommand.toast import Toast
+            self.toast = Toast(self.root)
+        return self.toast
+
     def hide_popups(self, timeout: float = 0.5) -> None:
-        """Remove our popup before something captures the screen (call from any non-Tk thread)."""
+        """Remove a message popup before something captures the screen (call from any
+        non-Tk thread). A pending power-action confirmation stays."""
         if self.toast is None:
             return
         done = threading.Event()
 
         def close():
-            self.toast._close_now()
+            self.toast.hide_message()
             self.root.update_idletasks()
             done.set()
         self.post(close)
@@ -131,10 +135,44 @@ class App:
         if not mapping:
             return
         log.info("Gesture %s -> %s", gesture_id, mapping.get("action"))
-        self._executor.submit(self._run_action, gesture_id, mapping.get("action"), mapping.get("params"))
+        self._dispatch(gesture_id, mapping.get("action"), mapping.get("params"))
 
     def test_action(self, action_id: str, params: dict | None) -> None:
-        self._executor.submit(self._run_action, "", action_id, params)
+        self._dispatch("", action_id, params)
+
+    def _dispatch(self, gesture_id: str, action_id: str, params: dict | None) -> None:
+        spec = actions.registry().get(action_id)
+        if spec is not None and spec.confirm_seconds > 0:
+            # Power actions (and Test of them): ask first, with a countdown.
+            self._request_confirm(gesture_id, spec, params)
+        else:
+            self._executor.submit(self._run_action, gesture_id, action_id, params)
+
+    def _label(self, gesture_id: str) -> str:
+        g = gestures.registry().get(gesture_id)
+        return f"{g.icon} {g.name}" if g else "Test"
+
+    def _request_confirm(self, gesture_id: str, spec, params: dict | None) -> None:
+        """Show the countdown popup; the action runs on Execute or when it ends.
+
+        Always shown (even with popups turned off): this is the only way to stop it.
+        """
+        label = self._label(gesture_id)
+        log.info("Confirm %s -> %s (%d s)", gesture_id or "test", spec.id, spec.confirm_seconds)
+        if gesture_id and self.cfg.get("sounds", True):
+            sound.play("action")
+
+        def execute():
+            log.info("Confirmed: %s", spec.id)
+            self._executor.submit(self._run_action, gesture_id, spec.id, params, False)
+
+        def cancel():
+            log.info("Cancelled: %s", spec.id)
+            self.last_event = f"{label} → {spec.name} cancelled  ({datetime.now():%H:%M:%S})"
+            self._refresh_ui()
+
+        self.post(lambda: self._toast().confirm(label, spec.name, spec.confirm_seconds,
+                                                on_execute=execute, on_cancel=cancel))
 
     @staticmethod
     def feedback_for(from_gesture: bool, action_id: str, msg: str | None, failed: bool,
@@ -149,9 +187,9 @@ class App:
         popup = bool(msg) and action_id != "lock_pc" and (popups_on or failed)
         return popup, sound
 
-    def _run_action(self, gesture_id: str, action_id: str, params: dict | None) -> None:
-        g = gestures.registry().get(gesture_id)
-        label = f"{g.icon} {g.name}" if g else "Test"
+    def _run_action(self, gesture_id: str, action_id: str, params: dict | None,
+                    feedback: bool = True) -> None:
+        label = self._label(gesture_id)
         failed = False
         try:
             msg = actions.run_action(action_id, params, self)
@@ -159,6 +197,11 @@ class App:
             log.exception("Action %s failed", action_id)
             msg, failed = f"Couldn't run {action_id}: {exc}", True
         self.last_event = f"{label} → {msg or action_id}  ({datetime.now():%H:%M:%S})"
+        if not feedback:                    # confirmed power action: the popup already said it
+            if failed:
+                self.notify(msg, title=label, error=True)
+            self.post(self._refresh_ui)
+            return
         popup, sound_name = self.feedback_for(
             bool(gesture_id), action_id, msg, failed,
             popups_on=self.cfg.get("notifications", True), sounds_on=self.cfg.get("sounds", True))

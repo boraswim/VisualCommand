@@ -15,6 +15,17 @@ from visualcommand.config import DEFAULTS
 from visualcommand.icon import make_icon
 
 NOTHING = "— nothing —"
+ACTION_INDENT = "      "
+HEADER_MARK = "▸ "
+
+
+def header_item(group: str) -> str:
+    """Dropdown line for a category (not selectable)."""
+    return f"{HEADER_MARK}{group.upper()}"
+
+
+def is_header(item: str) -> bool:
+    return item.startswith(HEADER_MARK)
 LIGHTING_MODES = {"Auto (only when needed)": "auto", "Always": "always", "Off": "off"}
 
 PRIVACY_TEXT = (
@@ -55,8 +66,21 @@ class SettingsWindow:
         style.configure("Status.TLabel", foreground="#444444", font=("Segoe UI", 9))
 
         self._actions = actions.catalogue()
-        self._action_by_name = {a.name: a for a in self._actions}
         self._action_by_id = {a.id: a for a in self._actions}
+        self._action_by_name = {a.name: a for a in self._actions}
+        # Dropdown entries grouped by category: a header line, then its actions indented.
+        self._action_items: list[str] = [NOTHING]
+        self._action_by_item: dict[str, object] = {}
+        self._item_by_id: dict[str, str] = {}
+        group = None
+        for a in self._actions:
+            if a.group != group:
+                group = a.group
+                self._action_items.append(header_item(group))
+            item = ACTION_INDENT + a.name
+            self._action_items.append(item)
+            self._action_by_item[item] = a
+            self._item_by_id[a.id] = item
 
         self._build_header()
         nb = ttk.Notebook(root)
@@ -129,7 +153,7 @@ class SettingsWindow:
         canvas.bind("<Leave>", lambda e: canvas.unbind_all("<MouseWheel>"))
 
         body.columnconfigure(1, weight=1)
-        action_names = [NOTHING] + [a.name for a in self._actions]
+        action_names = self._action_items
         mappings = self.cfg.mappings()
         ttk.Label(body, text="Hand gestures (hold the pose briefly)", style="Section.TLabel").grid(
             row=0, column=0, columnspan=4, sticky="w", pady=(0, 4))
@@ -147,7 +171,8 @@ class SettingsWindow:
             row=row + 1, column=1, sticky="w", pady=(0, 6))
 
         var = tk.StringVar()
-        combo = ttk.Combobox(body, textvariable=var, values=action_names, state="readonly", width=30)
+        combo = ttk.Combobox(body, textvariable=var, values=action_names, state="readonly", width=30,
+                             height=min(len(action_names), 26))
         combo.grid(row=row, column=2, sticky="e", padx=6)
         param_var = tk.StringVar()
         param = ttk.Entry(body, textvariable=param_var, width=33)
@@ -155,7 +180,9 @@ class SettingsWindow:
         test.grid(row=row, column=3, sticky="e")
 
         spec = self._action_by_id.get((mapping or {}).get("action", ""))
+        # The closed box shows the plain action name; the open list is indented by category.
         var.set(spec.name if spec else NOTHING)
+        last_valid = [var.get()]
         if spec and spec.params:
             param_var.set((mapping.get("params") or {}).get(spec.params[0].key, ""))
 
@@ -176,6 +203,13 @@ class SettingsWindow:
             self.cfg.set_mapping(g.id, spec.id if spec else "", params)
 
         def on_select(_):
+            item = var.get()
+            if is_header(item):               # category headers can't be picked
+                var.set(last_valid[0])
+                return
+            picked = self._action_by_item.get(item)
+            var.set(picked.name if picked else NOTHING)
+            last_valid[0] = var.get()
             show_param()
             save()
             if current() and current().params and not param_var.get():

@@ -6,12 +6,12 @@ import logging
 import pkgutil
 
 from visualcommand.actions.base import (  # noqa: F401  (re-exported)
-    NONE_ID, ActionSpec, Param, register_action, registry,
+    GROUP_ORDER, NONE_ID, ActionSpec, Param, register_action, registry,
 )
 
 log = logging.getLogger(__name__)
 
-_BUILTIN_MODULES = ("system", "media", "audio")
+_BUILTIN_MODULES = ("system", "media", "audio", "power")
 _loaded = False
 
 
@@ -28,9 +28,14 @@ def load_all() -> None:
     _loaded = True
 
 
+def _group_rank(group: str) -> int:
+    return GROUP_ORDER.index(group) if group in GROUP_ORDER else len(GROUP_ORDER)
+
+
 def catalogue() -> list[ActionSpec]:
+    """All actions, grouped by category (GROUP_ORDER), then by their own order."""
     load_all()
-    return sorted(registry().values(), key=lambda a: (a.order, a.name))
+    return sorted(registry().values(), key=lambda a: (_group_rank(a.group), a.order, a.name))
 
 
 def run_action(action_id: str, params: dict | None, ctx) -> str | None:
