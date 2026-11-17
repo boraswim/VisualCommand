@@ -8,14 +8,9 @@ from visualcommand.main import App
 from visualcommand.toast import Toast, countdown_text
 
 
-@pytest.fixture(scope="module")
-def root():
-    # One Tk for the whole module: creating/destroying many Tk instances in a row
-    # intermittently fails on Windows ("Can't find a usable tk.tcl").
-    r = tk.Tk()
-    r.withdraw()
-    yield r
-    r.destroy()
+@pytest.fixture
+def root(tk_root):
+    return tk_root
 
 
 def pump(root, until, timeout=3.0):

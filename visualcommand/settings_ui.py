@@ -26,6 +26,13 @@ def header_item(group: str) -> str:
 
 def is_header(item: str) -> bool:
     return item.startswith(HEADER_MARK)
+
+
+def order_gestures(catalogue: list, mappings: dict) -> tuple[list, list]:
+    """Split gestures into (assigned, unassigned), each keeping catalogue order."""
+    assigned = [g for g in catalogue if (mappings.get(g.id) or {}).get("action")]
+    unassigned = [g for g in catalogue if g not in assigned]
+    return assigned, unassigned
 LIGHTING_MODES = {"Auto (only when needed)": "auto", "Always": "always", "Off": "off"}
 
 PRIVACY_TEXT = (
@@ -96,6 +103,7 @@ class SettingsWindow:
 
     # --- window -----------------------------------------------------------------------
     def show(self) -> None:
+        self._populate_gestures()      # re-sort: newly assigned gestures move to the top
         self.root.deiconify()
         self.root.lift()
         self.root.attributes("-topmost", True)
@@ -153,15 +161,49 @@ class SettingsWindow:
         canvas.bind("<Leave>", lambda e: canvas.unbind_all("<MouseWheel>"))
 
         body.columnconfigure(1, weight=1)
-        action_names = self._action_items
-        mappings = self.cfg.mappings()
-        ttk.Label(body, text="Hand gestures (hold the pose briefly)", style="Section.TLabel").grid(
-            row=0, column=0, columnspan=4, sticky="w", pady=(0, 4))
-        row = 1
-        for g in gestures.catalogue():
-            self._gesture_row(body, row, g, action_names, mappings.get(g.id))
-            row += 2
+        self._gesture_body = body
+        self._gesture_canvas = canvas
+        self._populate_gestures()
         return outer
+
+    def _populate_gestures(self, focus_gid: str | None = None) -> None:
+        """(Re)build the gesture rows: assigned ones first, then the rest.
+
+        Runs when the window opens and whenever a gesture gets or loses its action.
+        With `focus_gid`, the list scrolls to that gesture (and focuses its command
+        field if it still needs one) instead of jumping back to the top.
+        """
+        body = self._gesture_body
+        self.root.focus_set()          # lets a half-typed command field save (FocusOut)
+        for child in body.winfo_children():
+            child.destroy()
+        self._rows: dict[str, dict] = {}
+        mappings = self.cfg.mappings()
+        assigned, unassigned = order_gestures(gestures.catalogue(), mappings)
+        row = 0
+        for title, group in (("In use", assigned), ("Not assigned", unassigned)):
+            if not group:
+                continue
+            ttk.Label(body, text=title, style="Section.TLabel").grid(
+                row=row, column=0, columnspan=4, sticky="w", pady=(10 if row else 0, 4))
+            row += 1
+            for g in group:
+                self._gesture_row(body, row, g, self._action_items, mappings.get(g.id))
+                row += 2
+        canvas = self._gesture_canvas
+        target = self._rows.get(focus_gid) if focus_gid else None
+        if target is None:
+            canvas.yview_moveto(0)
+            return
+        body.update_idletasks()
+        canvas.configure(scrollregion=canvas.bbox("all"))
+        total = max(1, body.winfo_height())
+        y = target["anchor"].winfo_y()
+        visible = canvas.winfo_height() / total
+        # put the moved gesture about a third of the way down the visible area
+        canvas.yview_moveto(max(0.0, y / total - visible / 3))
+        if target["needs_param"]():
+            target["param"].focus_set()
 
     def _gesture_row(self, body, row, g, action_names, mapping) -> None:
         ttk.Label(body, text=g.icon, font=("Segoe UI Emoji", 16), width=3).grid(
@@ -208,10 +250,16 @@ class SettingsWindow:
                 var.set(last_valid[0])
                 return
             picked = self._action_by_item.get(item)
+            was_assigned = last_valid[0] != NOTHING
             var.set(picked.name if picked else NOTHING)
             last_valid[0] = var.get()
             show_param()
             save()
+            if (picked is not None) != was_assigned:
+                # Moved between "In use" and "Not assigned": re-sort now (after this
+                # event, since the rebuild destroys this combobox) and keep it in view.
+                self.root.after_idle(lambda: self._populate_gestures(focus_gid=g.id))
+                return
             if current() and current().params and not param_var.get():
                 param.focus_set()
 
@@ -226,6 +274,9 @@ class SettingsWindow:
         param.bind("<Return>", save)
         test.configure(command=do_test)
         show_param()
+        self._rows[g.id] = {"anchor": combo, "param": param,
+                            "needs_param": lambda: bool(current() and current().params
+                                                        and not param_var.get())}
 
     # --- general tab ------------------------------------------------------------------
     def _build_general(self, parent) -> ttk.Frame:
