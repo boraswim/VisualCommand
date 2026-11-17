@@ -45,6 +45,68 @@ def test_recognizer_builds_with_bundled_model():
     rec.close()
 
 
+class _CfgApp(_FakeApp):
+    def __init__(self, mirror=True):
+        self.values = {"mirror_image": mirror}
+        app = self
+
+        class cfg:
+            @staticmethod
+            def get(key, default=None):
+                return app.values.get(key, default)
+
+            @staticmethod
+            def set(key, value, save=True):
+                app.values[key] = value
+        self.cfg = cfg
+
+
+def _hand(label, score=0.98):
+    from visualcommand.features import FrameFeatures
+    f = FrameFeatures(t=0, hand=True, handedness=label)
+    f.extra["handedness_score"] = score
+    return f
+
+
+def _run_check(app, label, frames=30):
+    t = Tracker(app)
+    results = []
+    t.check_orientation(lambda msg, ok: results.append((msg, ok)), seconds=10)
+    for i in range(frames):
+        t._feed_orientation_check([_hand(label)] if label else [], 1e9 if i == frames - 1 else 0)
+    return results
+
+
+def test_orientation_check_flips_when_right_hand_reads_as_left():
+    """Regression: this user's webcam already mirrors; the app's extra flip made
+    MediaPipe see the right hand as a left hand."""
+    app = _CfgApp(mirror=True)
+    results = _run_check(app, "Left")
+    assert app.values["mirror_image"] is False and results[-1][1] is True
+
+
+def test_orientation_check_keeps_correct_setting():
+    app = _CfgApp(mirror=False)
+    results = _run_check(app, "Right")
+    assert app.values["mirror_image"] is False and "correct" in results[-1][0]
+
+
+def test_orientation_check_needs_a_hand():
+    app = _CfgApp(mirror=True)
+    results = _run_check(app, None)
+    assert app.values["mirror_image"] is True and results[-1][1] is False
+
+
+def test_min_score_migrated_to_new_default(tmp_path):
+    import json
+    from visualcommand.config import Config
+    p = tmp_path / "config.json"
+    p.write_text(json.dumps({"version": 4, "sensitivity": {"min_score": 0.7}}), encoding="utf-8")
+    assert Config(p).sensitivity()["min_score"] == 0.55
+    p.write_text(json.dumps({"version": 4, "sensitivity": {"min_score": 0.8}}), encoding="utf-8")
+    assert Config(p).sensitivity()["min_score"] == 0.8
+
+
 def test_idle_fps_migrated_to_new_default(tmp_path):
     import json
     from visualcommand.config import Config

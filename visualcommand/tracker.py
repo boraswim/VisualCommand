@@ -15,7 +15,9 @@ import cv2
 import numpy as np
 
 from visualcommand import lighting
-from visualcommand.features import HAND_CONNECTIONS, FrameFeatures, build_hands, plausible_hand
+from visualcommand.features import (
+    HAND_CONNECTIONS, FrameFeatures, build_hands, drop_phantom_hands, plausible_hand,
+)
 from visualcommand.hands import HandSlots
 from visualcommand.paths import model_path
 from visualcommand.winutil import session_locked
@@ -84,6 +86,7 @@ class Tracker(threading.Thread):
         self.preview = False
         self._preview_open = False
         self._open_camera_settings = False
+        self._orientation_check: dict | None = None
         self._cap: cv2.VideoCapture | None = None
         self._cap_index: int | None = None
         self._recognizer = None
@@ -108,6 +111,46 @@ class Tracker(threading.Thread):
     def set_preview(self, on: bool) -> None:
         self.preview = on
         self.wake()
+
+    def check_orientation(self, on_done, seconds: float = 4.0) -> None:
+        """Find out whether this camera already mirrors its picture.
+
+        The user raises their RIGHT hand. MediaPipe labels a right hand "Right" only
+        when the frame it sees is selfie-style; if it says "Left", our flip is wrong
+        for this camera and gets toggled. `on_done(message, ok)` is called from the
+        tracker thread.
+        """
+        self._orientation_check = {"until": time.monotonic() + seconds, "labels": [],
+                                   "on_done": on_done}
+        self.wake()
+
+    def _feed_orientation_check(self, hands, now: float) -> None:
+        chk = self._orientation_check
+        if chk is None:
+            return
+        if len(hands) == 1 and hands[0].extra.get("handedness_score", 0) >= 0.8:
+            chk["labels"].append(hands[0].handedness)
+        if now < chk["until"] and len(chk["labels"]) < 25:
+            return
+        self._orientation_check = None
+        labels = chk["labels"]
+        if len(labels) < 5:
+            chk["on_done"]("Couldn't see one hand clearly. Raise only your right hand and try again.",
+                           False)
+            return
+        right = labels.count("Right") / len(labels)
+        mirror = bool(self.cfg.get("mirror_image", True))
+        if right >= 0.7:
+            chk["on_done"]("Camera orientation is correct.", True)
+        elif right <= 0.3:
+            self.cfg.set("mirror_image", not mirror)
+            log.info("Orientation check: switching mirror_image to %s", not mirror)
+            chk["on_done"]("Fixed: your camera " + ("does not mirror" if not mirror else
+                           "already mirrors") + " its picture. Left and right hands are now "
+                           "recognised correctly.", True)
+        else:
+            chk["on_done"]("Result was unclear. Keep your left hand out of view and try again.",
+                           False)
 
     def request_camera_settings(self) -> None:
         self._open_camera_settings = True
@@ -281,7 +324,10 @@ class Tracker(threading.Thread):
         t0 = time.perf_counter()
         size = FRAME_SIZE
         small = cv2.resize(frame, size, interpolation=cv2.INTER_AREA)
-        small = cv2.flip(small, 1)  # selfie view: your right is the image's right
+        if self.cfg.get("mirror_image", True):
+            # Selfie view (what MediaPipe expects): your right is the image's right.
+            # Skipped for cameras that already deliver a mirrored picture.
+            small = cv2.flip(small, 1)
 
         light = lighting.analyze(small)
         if light != self.lighting:
@@ -297,9 +343,10 @@ class Tracker(threading.Thread):
         result = self._recognizer.recognize_for_video(image, ts)
 
         detected = build_hands(now, result, size[0] / size[1], light)
-        hands = [h for h in detected if plausible_hand(h)]
+        hands = drop_phantom_hands([h for h in detected if plausible_hand(h)])
         if hands:
             self._last_hand = now
+        self._feed_orientation_check(hands, now)
 
         mappings = self.cfg.mappings()
         events = self._hands.process(

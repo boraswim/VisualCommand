@@ -10,7 +10,7 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
-CONFIG_VERSION = 4
+CONFIG_VERSION = 5
 
 DEFAULTS: dict[str, Any] = {
     "version": CONFIG_VERSION,
@@ -20,6 +20,11 @@ DEFAULTS: dict[str, Any] = {
     "hand_strictness": 0.7,
     "notifications": True,
     "camera_index": 0,
+    # MediaPipe expects a selfie-style (mirrored) image. Most webcams deliver an
+    # unmirrored picture, so the app flips it; some already mirror it themselves and
+    # must not be flipped again (otherwise left/right hands get swapped). Set by the
+    # "Check camera orientation" button in the General tab.
+    "mirror_image": True,
     # "auto": enhance only when the scene is dark / flat / backlit. "always" | "off".
     "lighting_mode": "auto",
     # Optional safety gesture: when set, other gestures only fire within arm_window
@@ -32,7 +37,10 @@ DEFAULTS: dict[str, Any] = {
     "sensitivity": {
         "hold_time": 0.4,       # seconds a pose must be held
         "cooldown": 2.0,        # seconds before the same gesture can fire again
-        "min_score": 0.7,       # pose confidence needed (0..1)
+        # MediaPipe's pose confidence needed (0..1). Its scores for a correctly
+        # recognised pose are often only 0.6-0.75; the hold time (same pose for
+        # hold_time seconds) is what guards against accidental triggers.
+        "min_score": 0.55,
     },
     # gesture id -> {"action": action id, "params": {...}}
     "mappings": {
@@ -97,6 +105,10 @@ class Config:
             # changed it move to the new default.
             if self.data.get("idle_fps") == 4:
                 self.data["idle_fps"] = DEFAULTS["idle_fps"]
+        if from_version < 5:
+            # 0.7 rejected correctly recognised poses (e.g. open palm at 0.61).
+            if self.data["sensitivity"].get("min_score") == 0.7:
+                self.data["sensitivity"]["min_score"] = DEFAULTS["sensitivity"]["min_score"]
         self.data["version"] = CONFIG_VERSION
         return changed
 

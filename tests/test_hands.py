@@ -79,6 +79,82 @@ def test_plausible_hand_accepts_normal_hand():
     assert sum(f.extended[1:]) == 4
 
 
+def _tucked_thumb(lm):
+    lm = lm.copy()
+    # thumb folded across the palm, tip near the middle-finger base
+    lm[2] = lm[0] + np.array([-0.04, -0.12])
+    lm[3] = lm[0] + np.array([-0.03, -0.17])
+    lm[4] = lm[0] + np.array([-0.01, -0.19])
+    return lm
+
+
+def _mirror(lm):
+    out = lm.copy()
+    out[:, 0] = 1.0 - out[:, 0]
+    return out
+
+
+def test_finger_states_identical_for_left_and_right_hand():
+    """Regression: a pose must read the same with either hand (mirror image)."""
+    for lm in (_real_hand_landmarks(), _tucked_thumb(_real_hand_landmarks())):
+        right = features_from_landmarks(0, lm, 4 / 3)
+        left = features_from_landmarks(0, _mirror(lm), 4 / 3)
+        assert right.extended == left.extended
+
+
+def test_thumb_out_and_tucked_are_told_apart():
+    out = features_from_landmarks(0, _real_hand_landmarks(), 4 / 3)
+    tucked = features_from_landmarks(0, _tucked_thumb(_real_hand_landmarks()), 4 / 3)
+    assert out.extended[0] is True
+    assert tucked.extended[0] is False
+
+
+def _sided(t, center, size, side, label="None", score=0.9, hs=0.99):
+    f = hand(t, center, label, score)
+    f.palm_size, f.handedness = size, side
+    f.extra["handedness_score"] = hs
+    return f
+
+
+def test_phantom_same_side_hand_dropped():
+    """Regression: a sleeve below the real right hand was detected as a second,
+    smaller *right* hand making a fist, firing Closed_Fist during an open palm."""
+    from visualcommand.features import drop_phantom_hands
+    real = _sided(0, (0.44, 0.45), 0.20, "Right", "Open_Palm", 0.72)
+    phantom = _sided(0, (0.43, 0.84), 0.12, "Right", "Closed_Fist", 0.82)
+    assert drop_phantom_hands([phantom, real]) == [real]
+
+
+def test_much_smaller_second_hand_dropped():
+    from visualcommand.features import drop_phantom_hands
+    real = _sided(0, (0.3, 0.4), 0.20, "Right")
+    tiny = _sided(0, (0.7, 0.8), 0.08, "Left")
+    assert drop_phantom_hands([real, tiny]) == [real]
+
+
+def test_real_two_hands_kept():
+    from visualcommand.features import drop_phantom_hands
+    right = _sided(0, (0.3, 0.4), 0.20, "Right")
+    left = _sided(0, (0.7, 0.4), 0.17, "Left")
+    assert drop_phantom_hands([right, left]) == [right, left]
+
+
+def test_fist_is_not_a_pinch_or_ok_sign():
+    """Regression: in a fist the thumb rests on the index (gap ~0.3 palm), which the
+    old pinch threshold (0.32) accepted."""
+    from visualcommand.gestures import registry
+    fist = FrameFeatures(t=0, hand=True, mp_label="Closed_Fist", extended=(False,) * 5,
+                         pinch=0.30, index_reach=0.32, palm_size=0.2)
+    ok = FrameFeatures(t=0, hand=True, extended=(False, False, True, True, True),
+                       pinch=0.14, index_reach=0.6, palm_size=0.2)
+    pinch = FrameFeatures(t=0, hand=True, extended=(True, False, False, False, False),
+                          pinch=0.12, index_reach=0.6, palm_size=0.2)
+    reg = registry()
+    assert reg["Pinch"]().score(fist) == 0 and reg["OK_Sign"]().score(fist) == 0
+    assert reg["OK_Sign"]().score(ok) > 0
+    assert reg["Pinch"]().score(pinch) > 0
+
+
 def test_plausible_hand_rejects_tiny_blob():
     f = features_from_landmarks(0, _real_hand_landmarks(scale=0.1), 4 / 3)
     assert not plausible_hand(f)

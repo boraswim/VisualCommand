@@ -41,6 +41,7 @@ class FrameFeatures:
     palm_center: tuple[float, float] = (0.0, 0.0)   # normalised frame coords
     palm_size: float = 0.0                    # wrist to middle-MCP, aspect-corrected
     pinch: float = 9.9                        # thumb-tip to index-tip / palm_size
+    index_reach: float = 1.0                  # index-tip to middle-finger base / palm_size
     index_tip: tuple[float, float] = (0.0, 0.0)
     index_dir: tuple[float, float] = (0.0, 0.0)  # unit vector index MCP -> tip
     lighting: str = "good"
@@ -65,9 +66,13 @@ def finger_states(pts: np.ndarray) -> tuple[bool, bool, bool, bool, bool]:
     wrist = pts[WRIST]
     palm = _dist(wrist, pts[9]) or 1e-6
     states = []
-    # Thumb: tip well away from the index base and further from the pinky base than its IP joint.
+    # Thumb: the tip is further from the pinky base than its own IP joint is, and
+    # well away from the middle-finger base. Measured on real left and right hands:
+    # thumb out gives >= 1.13 and >= 0.73, thumb tucked gives <= 0.86 and <= 0.47.
+    # (The old "distance from the index base" test overlapped between the two.)
     tip, ip = pts[THUMB[3]], pts[THUMB[2]]
-    thumb = _dist(tip, pts[5]) > 0.55 * palm and _dist(tip, pts[17]) > _dist(ip, pts[17]) * 1.05
+    thumb = (_dist(tip, pts[17]) > _dist(ip, pts[17]) * 1.0
+             and _dist(tip, pts[9]) > 0.6 * palm)
     states.append(thumb)
     for mcp, pip, _dip, tip_i in FINGERS.values():
         # Curled fingers bring the tip back toward the wrist, closer than the PIP joint.
@@ -118,6 +123,29 @@ def plausible_hand(f: FrameFeatures) -> bool:
     return True
 
 
+SIZE_RATIO_MIN = 0.5      # a person's two hands are at a similar distance from the camera
+SAME_SIDE_CONFIDENCE = 0.9
+
+
+def drop_phantom_hands(hands: list[FrameFeatures]) -> list[FrameFeatures]:
+    """Remove a second detection that can't be a real second hand.
+
+    Seen on real recordings: a sleeve or forearm below the real hand detected as a
+    small "fist", labelled the same side (two right hands at once). Keep the larger
+    detection when both claim the same side, and drop one less than half the size
+    of the other.
+    """
+    if len(hands) < 2:
+        return hands
+    a, b = sorted(hands[:2], key=lambda h: h.palm_size, reverse=True)
+    same_side = (a.handedness and a.handedness == b.handedness
+                 and min(a.extra.get("handedness_score", 0), b.extra.get("handedness_score", 0))
+                 >= SAME_SIDE_CONFIDENCE)
+    if same_side or b.palm_size < SIZE_RATIO_MIN * a.palm_size:
+        return [a]
+    return [a, b]
+
+
 def build_features(t: float, result, aspect: float, lighting: str) -> FrameFeatures:
     """First hand only (kept for simple callers and tests)."""
     hands = build_hands(t, result, aspect, lighting)
@@ -140,6 +168,7 @@ def features_from_landmarks(t: float, norm: np.ndarray, aspect: float, lighting:
         palm_center=(float(centre[0]), float(centre[1])),
         palm_size=palm,
         pinch=_dist(pts[4], pts[8]) / palm,
+        index_reach=_dist(pts[8], pts[9]) / palm,
         index_tip=(float(norm[8][0]), float(norm[8][1])),
         index_dir=(float(d[0] / n), float(d[1] / n)),
         lighting=lighting,

@@ -9,7 +9,16 @@ from visualcommand.features import FrameFeatures
 from visualcommand.gestures.base import PoseGesture, register_gesture
 
 MATCH = 0.9          # score reported when a rule matches
-PINCH_CLOSE = 0.32   # thumb-index tip distance (in palm sizes) that counts as touching
+# Measured on real hands (both sides), in palm sizes:
+#   thumb-index tip gap: OK sign 0.10-0.16, fist 0.30-0.38
+#   index tip to middle-finger base: OK sign 0.56-0.63, fist 0.29-0.34
+PINCH_CLOSE = 0.22   # thumb and index tips count as touching below this
+INDEX_OUT = 0.45     # index tip is away from the palm (not curled into a fist) above this
+
+
+def _pinching(f: FrameFeatures) -> bool:
+    """Thumb and index tips together with the index held out, not a curled fist."""
+    return f.hand and f.pinch <= PINCH_CLOSE and f.index_reach >= INDEX_OUT
 
 
 @register_gesture
@@ -21,10 +30,9 @@ class Pinch(PoseGesture):
     order = 20
 
     def score(self, f: FrameFeatures) -> float:
-        if not f.hand or f.pinch > PINCH_CLOSE:
+        if not _pinching(f) or f.mp_label == "Closed_Fist":
             return 0.0
-        others_up = sum(f.extended[2:])
-        return MATCH if others_up <= 1 else 0.0
+        return MATCH if sum(f.extended[2:]) <= 1 else 0.0
 
 
 @register_gesture
@@ -36,7 +44,7 @@ class OkSign(PoseGesture):
     order = 21
 
     def score(self, f: FrameFeatures) -> float:
-        if not f.hand or f.pinch > PINCH_CLOSE:
+        if not _pinching(f):
             return 0.0
         return MATCH if all(f.extended[2:]) else 0.0
 

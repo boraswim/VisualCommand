@@ -233,6 +233,31 @@ class SettingsWindow:
                   ).grid(row=r, column=1, columnspan=2, sticky="w")
         r += 1
 
+        ttk.Label(f, text="Left / right hand").grid(row=r, column=0, sticky="w", pady=(10, 4))
+        orient_msg = ttk.Label(f, style="Desc.TLabel", wraplength=420,
+                               text="Some cameras already mirror their picture. If gestures work "
+                                    "with one hand but not the other, check this.")
+        orient_msg.grid(row=r + 1, column=1, columnspan=2, sticky="w")
+
+        def check_orientation():
+            if not self.cfg.get("tracking_enabled", True) or self.app.is_paused():
+                self.app.set_tracking(True)
+            orient_btn.state(["disabled"])
+            orient_msg.configure(text="Raise your RIGHT hand, open, in front of the camera now "
+                                      "(about 4 seconds). Keep your left hand out of view.")
+
+            def done(message, ok):
+                def show():
+                    orient_btn.state(["!disabled"])
+                    orient_msg.configure(text=message)
+                self.app.post(show)
+                self.app.notify(message, title="Camera orientation", error=not ok)
+            self.app.tracker.check_orientation(done)
+
+        orient_btn = ttk.Button(f, text="Check camera orientation…", command=check_orientation)
+        orient_btn.grid(row=r, column=1, sticky="w", pady=(10, 4))
+        r += 2
+
         ttk.Label(f, text="Low-light boost").grid(row=r, column=0, sticky="w", pady=(10, 4))
         light = ttk.Combobox(f, values=list(LIGHTING_MODES), state="readonly", width=26)
         mode = self.cfg.get("lighting_mode", "auto")
