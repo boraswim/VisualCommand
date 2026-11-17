@@ -108,6 +108,33 @@ def test_power_actions_go_through_confirmation(gid):
     assert f.confirmed == [(gid, "shutdown")] and f.ran == []
 
 
+class _ConfirmApp:
+    """Just enough of App for _request_confirm."""
+    def __init__(self, sounds=True):
+        self.posted = []
+        self.cfg = type("C", (), {"get": staticmethod(lambda k, d=None: sounds if k == "sounds" else d)})
+
+    def _label(self, gid):
+        return App._label(self, gid)
+
+    def post(self, fn):
+        self.posted.append(fn)
+
+
+@pytest.mark.parametrize("gid, expected", [("Victory", ["attention"]), ("", [])])
+def test_power_popup_plays_attention_sound_for_gestures_only(monkeypatch, gid, expected):
+    from visualcommand import actions, sound
+    played = []
+    monkeypatch.setattr(sound, "play", lambda name="action": played.append(name))
+    App._request_confirm(_ConfirmApp(), gid, actions.registry()["shutdown"], {})
+    assert played == expected
+
+
+def test_three_fingers_icon_is_not_the_vulcan_salute():
+    from visualcommand.gestures import registry
+    assert registry()["Three_Fingers"].icon != "🖖"
+
+
 def test_other_actions_run_directly():
     f = _Fake()
     App._dispatch(f, "Thumb_Up", "screenshot", {})

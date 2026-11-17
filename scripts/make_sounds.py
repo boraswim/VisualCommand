@@ -15,6 +15,8 @@ SOUNDS = {
     # output name: (source file, gain in dB)
     "action.wav": ("confirmation_001.ogg", -8),
     "error.wav": ("error_004.ogg", -10),
+    # power-action countdown popup: a "please respond" prompt, a bit louder
+    "attention.wav": ("question_001.ogg", -5),
 }
 
 
@@ -37,8 +39,9 @@ def main() -> None:
         subprocess.run(cmd, check=True)
         print(f"{dst.name}: {dst.stat().st_size} bytes  <- {src.name}")
     (OUT / "CREDITS.txt").write_text(
-        "action.wav, error.wav: processed from Kenney 'Interface Sounds' "
-        "(confirmation_001, error_004), CC0 1.0, https://kenney.nl\n", encoding="utf-8")
+        "action.wav, error.wav, attention.wav: processed from Kenney 'Interface Sounds' "
+        "(confirmation_001, error_004, question_001), CC0 1.0, https://kenney.nl\n",
+        encoding="utf-8")
 
 
 if __name__ == "__main__":

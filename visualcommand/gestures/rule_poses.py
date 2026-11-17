@@ -60,7 +60,7 @@ def _pattern(f: FrameFeatures, want: tuple, ignore_thumb: bool = False) -> bool:
 class ThreeFingers(PoseGesture):
     id = "Three_Fingers"
     name = "Three fingers"
-    icon = "🖖"
+    icon = "3️⃣"          # no emoji shows index+middle+ring up (🖖 is a different sign)
     description = "Index, middle and ring finger up; thumb and pinky folded."
     order = 22
 

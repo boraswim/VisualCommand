@@ -160,7 +160,7 @@ class App:
         label = self._label(gesture_id)
         log.info("Confirm %s -> %s (%d s)", gesture_id or "test", spec.id, spec.confirm_seconds)
         if gesture_id and self.cfg.get("sounds", True):
-            sound.play("action")
+            sound.play("attention")        # distinct from the normal chime: needs a response
 
         def execute():
             log.info("Confirmed: %s", spec.id)

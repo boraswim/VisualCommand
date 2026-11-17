@@ -11,7 +11,11 @@ from visualcommand.paths import resource_path
 
 log = logging.getLogger(__name__)
 
-SOUNDS = {"action": "assets/sounds/action.wav", "error": "assets/sounds/error.wav"}
+SOUNDS = {
+    "action": "assets/sounds/action.wav",        # a gesture ran an action
+    "error": "assets/sounds/error.wav",          # the action failed
+    "attention": "assets/sounds/attention.wav",  # power action waiting for confirmation
+}
 
 
 def play(name: str = "action") -> bool:
