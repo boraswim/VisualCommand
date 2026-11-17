@@ -121,4 +121,4 @@ def test_old_config_loses_motion_mappings_and_swipe_setting(tmp_path):
     assert "swipe_distance" not in cfg.sensitivity()
     assert cfg.sensitivity()["hold_time"] == 0.5
     on_disk = json.loads(p.read_text(encoding="utf-8"))
-    assert on_disk["version"] == 3 and "Swipe_Down" not in on_disk["mappings"]
+    assert on_disk["version"] >= 3 and "Swipe_Down" not in on_disk["mappings"]

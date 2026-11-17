@@ -10,7 +10,7 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
-CONFIG_VERSION = 3
+CONFIG_VERSION = 4
 
 DEFAULTS: dict[str, Any] = {
     "version": CONFIG_VERSION,
@@ -26,7 +26,8 @@ DEFAULTS: dict[str, Any] = {
     # seconds after this one was held.
     "arm_gesture": "",
     "arm_window": 5.0,
-    "idle_fps": 4,
+    # Checks per second while no hand is visible: how quickly a new hand is noticed.
+    "idle_fps": 6,
     "active_fps": 15,
     "sensitivity": {
         "hold_time": 0.4,       # seconds a pose must be held
@@ -91,6 +92,11 @@ class Config:
             self.data["sensitivity"].pop("swipe_distance", None)
             for gid in _REMOVED_GESTURES:
                 self.data["mappings"].pop(gid, None)
+        if from_version < 4:
+            # 4 checks/s noticed a hand entering the frame too late; users who never
+            # changed it move to the new default.
+            if self.data.get("idle_fps") == 4:
+                self.data["idle_fps"] = DEFAULTS["idle_fps"]
         self.data["version"] = CONFIG_VERSION
         return changed
 

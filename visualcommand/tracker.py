@@ -24,12 +24,34 @@ log = logging.getLogger(__name__)
 
 PREVIEW_WINDOW = "VisualCommand preview (not recorded)"
 ACTIVE_HOLD = 2.0       # stay in active mode this long after the hand disappears
-IDLE_SIZE = (320, 240)
-ACTIVE_SIZE = (480, 360)
+# One analysis size for idle and active: MediaPipe resizes to its own small model
+# inputs anyway, so a smaller idle frame saved almost no CPU but gave a blurrier
+# first look at a hand that had just appeared (often already in its pose).
+FRAME_SIZE = (480, 360)
+ACTIVE_SIZE = FRAME_SIZE
 
 # Status values shown in the tray / settings window
 OFF, STARTING, RUNNING, PAUSED, LOCKED, CAMERA_BUSY, ERROR = (
     "off", "starting", "running", "paused", "locked", "camera busy", "error")
+
+
+MAX_DETECTION_CONFIDENCE = 0.5
+
+
+def recognizer_thresholds(strictness: float) -> dict[str, float]:
+    """MediaPipe confidence thresholds for a given 'hand detection strictness'.
+
+    Detection (the palm detector finding a *new* hand) stays lenient: a fist,
+    thumbs-up or peace sign shows little palm and scores lower than an open hand,
+    so a strict value meant poses made straight into the frame were never found.
+    Presence (the landmark model confirming "this really is a hand") carries the
+    strictness instead: that is what drops shadows and clothing folds.
+    """
+    return {
+        "min_hand_detection_confidence": min(MAX_DETECTION_CONFIDENCE, strictness),
+        "min_hand_presence_confidence": strictness,
+        "min_tracking_confidence": max(0.3, strictness - 0.1),
+    }
 
 
 def create_recognizer(strictness: float = 0.7):
@@ -45,11 +67,7 @@ def create_recognizer(strictness: float = 0.7):
         # Two hands: if something that isn't a hand (a shadow on clothing) gets
         # picked up, your real hand still has a free slot and is detected.
         num_hands=2,
-        # Presence = "is this still a hand?" from the landmark model. Keeping it
-        # high makes MediaPipe drop false hands instead of tracking them forever.
-        min_hand_detection_confidence=strictness,
-        min_hand_presence_confidence=strictness,
-        min_tracking_confidence=max(0.3, strictness - 0.1),
+        **recognizer_thresholds(strictness),
     )
     return vision.GestureRecognizer.create_from_options(options)
 
@@ -261,7 +279,7 @@ class Tracker(threading.Thread):
 
     def _process(self, frame: np.ndarray, active: bool, now: float) -> None:
         t0 = time.perf_counter()
-        size = ACTIVE_SIZE if active else IDLE_SIZE
+        size = FRAME_SIZE
         small = cv2.resize(frame, size, interpolation=cv2.INTER_AREA)
         small = cv2.flip(small, 1)  # selfie view: your right is the image's right
 
