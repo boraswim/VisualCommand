@@ -87,13 +87,22 @@ def _top(categories_per_hand, i):
     return None
 
 
-def build_hands(t: float, result, aspect: float, lighting: str) -> list[FrameFeatures]:
-    """One FrameFeatures per hand in a MediaPipe GestureRecognizerResult (0, 1 or 2)."""
+def build_hands(t: float, result, aspect: float, lighting: str,
+                to_user_view: bool = False) -> list[FrameFeatures]:
+    """One FrameFeatures per hand in a MediaPipe GestureRecognizerResult (0, 1 or 2).
+
+    MediaPipe is fed the camera's natural (unmirrored) view, where *your* right is
+    the image's left. With `to_user_view`, x coordinates are mirrored so everything
+    downstream (pointing direction, preview) is from your point of view: x grows to
+    your right. Finger states don't depend on this; handedness comes from MediaPipe.
+    """
     hands = []
     if result is None or not result.hand_landmarks:
         return hands
     for i, lm in enumerate(result.hand_landmarks):
         norm = np.array([[p.x, p.y] for p in lm], dtype=np.float32)
+        if to_user_view:
+            norm[:, 0] = 1.0 - norm[:, 0]
         g, h = _top(result.gestures, i), _top(result.handedness, i)
         f = features_from_landmarks(
             t, norm, aspect, lighting,

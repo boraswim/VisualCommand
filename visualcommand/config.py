@@ -10,7 +10,7 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
-CONFIG_VERSION = 5
+CONFIG_VERSION = 6
 
 DEFAULTS: dict[str, Any] = {
     "version": CONFIG_VERSION,
@@ -21,11 +21,11 @@ DEFAULTS: dict[str, Any] = {
     "notifications": True,      # popup when a gesture runs an action
     "sounds": True,             # short sound when a gesture runs an action
     "camera_index": 0,
-    # MediaPipe expects a selfie-style (mirrored) image. Most webcams deliver an
-    # unmirrored picture, so the app flips it; some already mirror it themselves and
-    # must not be flipped again (otherwise left/right hands get swapped). Set by the
-    # "Check camera orientation" button in the General tab.
-    "mirror_image": True,
+    # Flip the camera picture before analysis. MediaPipe's hand model wants the
+    # camera's natural (unmirrored) view, which most webcams deliver, so this is off;
+    # it is only for cameras that deliver a mirrored picture. (Measured: right hand
+    # labelled correctly only on the natural view.) Set by "Check camera orientation".
+    "mirror_image": False,
     # "auto": enhance only when the scene is dark / flat / backlit. "always" | "off".
     "lighting_mode": "auto",
     # Optional safety gesture: when set, other gestures only fire within arm_window
@@ -110,6 +110,10 @@ class Config:
             # 0.7 rejected correctly recognised poses (e.g. open palm at 0.61).
             if self.data["sensitivity"].get("min_score") == 0.7:
                 self.data["sensitivity"]["min_score"] = DEFAULTS["sensitivity"]["min_score"]
+        if from_version < 6:
+            # The old default (flip) was wrong for normal webcams: MediaPipe wants the
+            # natural view. Only an explicit orientation check should turn it on.
+            self.data["mirror_image"] = False
         self.data["version"] = CONFIG_VERSION
         return changed
 

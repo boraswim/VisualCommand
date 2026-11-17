@@ -117,11 +117,11 @@ class Tracker(threading.Thread):
         self.wake()
 
     def check_orientation(self, on_done, seconds: float = 4.0) -> None:
-        """Find out whether this camera already mirrors its picture.
+        """Find out whether this camera delivers a mirrored picture.
 
-        The user raises their RIGHT hand. MediaPipe labels a right hand "Right" only
-        when the frame it sees is selfie-style; if it says "Left", our flip is wrong
-        for this camera and gets toggled. `on_done(message, ok)` is called from the
+        The user raises their RIGHT hand. MediaPipe labels it "Right" only when it
+        sees the camera's natural (unmirrored) view; if it says "Left", the picture
+        the app feeds it is mirrored and the flip setting gets toggled. `on_done(message, ok)` is called from the
         tracker thread.
         """
         self._orientation_check = {"until": time.monotonic() + seconds, "labels": [],
@@ -143,14 +143,13 @@ class Tracker(threading.Thread):
                            False)
             return
         right = labels.count("Right") / len(labels)
-        mirror = bool(self.cfg.get("mirror_image", True))
+        mirror = bool(self.cfg.get("mirror_image", False))
         if right >= 0.7:
             chk["on_done"]("Camera orientation is correct.", True)
         elif right <= 0.3:
             self.cfg.set("mirror_image", not mirror)
             log.info("Orientation check: switching mirror_image to %s", not mirror)
-            chk["on_done"]("Fixed: your camera " + ("does not mirror" if not mirror else
-                           "already mirrors") + " its picture. Left and right hands are now "
+            chk["on_done"]("Fixed: left and right hands (and pointing directions) are now "
                            "recognised correctly.", True)
         else:
             chk["on_done"]("Result was unclear. Keep your left hand out of view and try again.",
@@ -333,9 +332,9 @@ class Tracker(threading.Thread):
         t0 = time.perf_counter()
         size = FRAME_SIZE
         small = cv2.resize(frame, size, interpolation=cv2.INTER_AREA)
-        if self.cfg.get("mirror_image", True):
-            # Selfie view (what MediaPipe expects): your right is the image's right.
-            # Skipped for cameras that already deliver a mirrored picture.
+        if self.cfg.get("mirror_image", False):
+            # MediaPipe's hand model wants the camera's natural (unmirrored) view;
+            # only cameras that deliver a mirrored picture need flipping back.
             small = cv2.flip(small, 1)
 
         light = lighting.analyze(small)
@@ -351,7 +350,8 @@ class Tracker(threading.Thread):
         self._last_ts = ts
         result = self._recognizer.recognize_for_video(image, ts)
 
-        detected = build_hands(now, result, size[0] / size[1], light)
+        # Positions converted to your point of view (x grows to your right).
+        detected = build_hands(now, result, size[0] / size[1], light, to_user_view=True)
         hands = drop_phantom_hands([h for h in detected if plausible_hand(h)])
         if hands:
             self._last_hand = now
@@ -376,7 +376,8 @@ class Tracker(threading.Thread):
 
     def _show_preview(self, img: np.ndarray, hands: list[FrameFeatures],
                       rejected: list[FrameFeatures]) -> None:
-        view = img  # already a private, resized copy
+        # Shown like a mirror, matching the hand positions (which are in your view).
+        view = cv2.flip(img, 1)
         h, w = view.shape[:2]
         colours = [(90, 220, 120), (240, 170, 60)]          # hand 1 green, hand 2 blue
         for f, colour in [(r, (60, 60, 230)) for r in rejected] + list(zip(

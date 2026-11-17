@@ -155,6 +155,57 @@ def test_fist_is_not_a_pinch_or_ok_sign():
     assert reg["Pinch"]().score(pinch) > 0
 
 
+def _fake_result(norm_landmarks, label="None", side="Right"):
+    from types import SimpleNamespace as NS
+    pts = [NS(x=float(x), y=float(y)) for x, y in norm_landmarks]
+    return NS(hand_landmarks=[pts], gestures=[[NS(category_name=label, score=0.0)]],
+              handedness=[[NS(category_name=side, score=0.99)]])
+
+
+def _pointing_hand(direction):
+    """Index finger out, other fingers curled, pointing along +x or -x in the image."""
+    lm = _real_hand_landmarks()
+    s = 1 if direction > 0 else -1
+    lm[5:9] = lm[5] + np.array([[0, 0], [s * 0.06, 0], [s * 0.11, 0], [s * 0.15, 0]])
+    for mcp, pip, dip, tip in ((9, 10, 11, 12), (13, 14, 15, 16), (17, 18, 19, 20)):
+        lm[pip] = lm[mcp] + np.array([0, -0.03])
+        lm[dip] = lm[mcp] + np.array([0, -0.01])
+        lm[tip] = lm[mcp] + np.array([0, 0.02])
+    lm[2:5] = _tucked_thumb(_real_hand_landmarks())[2:5]
+    return lm
+
+
+def test_pointing_right_in_your_view_is_point_right():
+    """Regression: the camera's natural view is not a mirror, so pointing to *your*
+    right points to the image's LEFT. Positions must be converted to your view."""
+    from visualcommand.features import build_hands
+    from visualcommand.gestures import registry
+    natural = _pointing_hand(direction=-1)          # image-left = your right
+    f = build_hands(0, _fake_result(natural), 4 / 3, "good", to_user_view=True)[0]
+    reg = registry()
+    assert reg["Point_Right"]().score(f) > 0
+    assert reg["Point_Left"]().score(f) == 0
+    g = build_hands(0, _fake_result(_pointing_hand(direction=+1)), 4 / 3, "good",
+                    to_user_view=True)[0]
+    assert reg["Point_Left"]().score(g) > 0 and reg["Point_Right"]().score(g) == 0
+
+
+def test_user_view_keeps_finger_states_and_handedness():
+    from visualcommand.features import build_hands
+    lm = _real_hand_landmarks()
+    a = build_hands(0, _fake_result(lm, side="Right"), 4 / 3, "good", to_user_view=False)[0]
+    b = build_hands(0, _fake_result(lm, side="Right"), 4 / 3, "good", to_user_view=True)[0]
+    assert a.extended == b.extended and b.handedness == "Right"
+    assert abs(a.palm_center[0] - (1 - b.palm_center[0])) < 1e-6
+
+
+def test_old_flip_default_is_turned_off(tmp_path):
+    import json
+    p = tmp_path / "config.json"
+    p.write_text(json.dumps({"version": 5, "mirror_image": True}), encoding="utf-8")
+    assert Config(p).get("mirror_image") is False
+
+
 def test_plausible_hand_rejects_tiny_blob():
     f = features_from_landmarks(0, _real_hand_landmarks(scale=0.1), 4 / 3)
     assert not plausible_hand(f)
