@@ -18,7 +18,8 @@ DEFAULTS: dict[str, Any] = {
     # MediaPipe confidence needed to accept / keep a hand (0.3 lenient .. 0.9 strict).
     # Higher rejects shadows and clothing folds but may lose hands in poor light.
     "hand_strictness": 0.7,
-    "notifications": True,
+    "notifications": True,      # popup when a gesture runs an action
+    "sounds": True,             # short sound when a gesture runs an action
     "camera_index": 0,
     # MediaPipe expects a selfie-style (mirrored) image. Most webcams deliver an
     # unmirrored picture, so the app flips it; some already mirror it themselves and

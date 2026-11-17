@@ -13,7 +13,7 @@ from datetime import datetime
 from logging.handlers import RotatingFileHandler
 
 from visualcommand import APP_NAME, __version__
-from visualcommand import actions, gestures
+from visualcommand import actions, gestures, sound
 from visualcommand.config import Config
 from visualcommand.paths import app_data_dir
 from visualcommand.tracker import Tracker
@@ -136,6 +136,19 @@ class App:
     def test_action(self, action_id: str, params: dict | None) -> None:
         self._executor.submit(self._run_action, "", action_id, params)
 
+    @staticmethod
+    def feedback_for(from_gesture: bool, action_id: str, msg: str | None, failed: bool,
+                     popups_on: bool, sounds_on: bool) -> tuple[bool, str | None]:
+        """What to show/play after an action: (show popup?, sound name or None).
+
+        Test-button runs get neither: the result shows in the window's status line.
+        """
+        if not from_gesture:
+            return False, None
+        sound = ("error" if failed else "action") if sounds_on else None
+        popup = bool(msg) and action_id != "lock_pc" and (popups_on or failed)
+        return popup, sound
+
     def _run_action(self, gesture_id: str, action_id: str, params: dict | None) -> None:
         g = gestures.registry().get(gesture_id)
         label = f"{g.icon} {g.name}" if g else "Test"
@@ -146,7 +159,12 @@ class App:
             log.exception("Action %s failed", action_id)
             msg, failed = f"Couldn't run {action_id}: {exc}", True
         self.last_event = f"{label} → {msg or action_id}  ({datetime.now():%H:%M:%S})"
-        if msg and action_id != "lock_pc":
+        popup, sound_name = self.feedback_for(
+            bool(gesture_id), action_id, msg, failed,
+            popups_on=self.cfg.get("notifications", True), sounds_on=self.cfg.get("sounds", True))
+        if sound_name:
+            sound.play(sound_name)
+        if popup:
             self.notify(msg, title=label, error=failed)
         self.post(self._refresh_ui)
 

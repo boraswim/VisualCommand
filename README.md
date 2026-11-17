@@ -32,6 +32,10 @@ Default mappings: 👍 screenshot · ✊ mute/unmute mic · ✌️ lock PC.
 
 All gestures are hand poses: hold the pose for a moment (0.4 s by default) and the action runs once. Lower your hand or change pose before it can run again. Moving gestures such as swipes were removed in 0.1.3 because webcam motion blur made them unreliable.
 
+When a gesture runs an action you get a short sound and a small popup (bottom right); either can be turned off in the General tab. The **Test** buttons run the action silently and show the result in the window's status line.
+
+Sounds: processed from Kenney's "Interface Sounds" (CC0, kenney.nl); `scripts/make_sounds.py` rebuilds them.
+
 Screenshots go to `Pictures\VisualCommand`. Settings and a small text log, which records only gesture names, are kept in `%APPDATA%\VisualCommand`.
 
 ## Development

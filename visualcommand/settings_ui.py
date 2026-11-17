@@ -10,7 +10,7 @@ from tkinter import ttk
 
 from PIL import ImageTk
 
-from visualcommand import APP_NAME, __version__, actions, gestures, winutil
+from visualcommand import APP_NAME, __version__, actions, gestures, sound, winutil
 from visualcommand.config import DEFAULTS
 from visualcommand.icon import make_icon
 
@@ -210,6 +210,16 @@ class SettingsWindow:
         ttk.Checkbutton(f, text="Show a popup when a gesture runs an action", variable=notif,
                         command=lambda: self.cfg.set("notifications", notif.get())
                         ).grid(row=r, column=0, columnspan=3, sticky="w", pady=4)
+        r += 1
+
+        snd = tk.BooleanVar(value=self.cfg.get("sounds", True))
+
+        def on_sound():
+            self.cfg.set("sounds", snd.get())
+            if snd.get():
+                sound.play("action")   # let the user hear what they turned on
+        ttk.Checkbutton(f, text="Play a sound when a gesture runs an action", variable=snd,
+                        command=on_sound).grid(row=r, column=0, columnspan=3, sticky="w", pady=4)
         r += 1
 
         ttk.Separator(f).grid(row=r, column=0, columnspan=3, sticky="ew", pady=12)

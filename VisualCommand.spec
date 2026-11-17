@@ -32,6 +32,7 @@ version_info = VSVersionInfo(
 datas = [
     (str(ROOT / "models" / "gesture_recognizer.task"), "models"),
     (str(ROOT / "assets" / "icon.ico"), "assets"),
+    (str(ROOT / "assets" / "sounds"), "assets/sounds"),
 ]
 datas += collect_data_files("mediapipe", excludes=["**/*.pyc", "**/testdata/**"])
 binaries = collect_dynamic_libs("mediapipe")
