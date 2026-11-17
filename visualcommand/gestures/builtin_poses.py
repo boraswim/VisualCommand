@@ -30,12 +30,37 @@ def open_palm_shape(f: FrameFeatures) -> bool:
             and f.tilt <= c["max_tilt"])
 
 
+# Thumbs up: MediaPipe's label also fired on a hand resting on the face with the
+# thumb along the cheek. Measured (palm lengths / degrees):
+#   deliberate: thumb tip 0.56-0.87 above the index knuckle (median 0.75), fingertips
+#               0.12-0.32 from their knuckles, thumb up to 43 deg from vertical
+#   hand on face: thumb -0.20-0.66 above (median 0.46), fingertips 0.23-0.58, up to 71 deg
+# Replay with these limits: all deliberate frames pass, no hand-on-face trigger.
+THUMB_UP = {
+    "min_lift": 0.55,        # thumb clearly sticking up above the fist
+    "max_fist": 0.35,        # other fingers curled tightly into a fist
+    "max_angle": 45.0,       # thumb pointing roughly straight up
+}
+
+
+def thumb_up_shape(f: FrameFeatures) -> bool:
+    c = THUMB_UP
+    return (f.extended[0]
+            and f.thumb_lift >= c["min_lift"]
+            and f.fist_tightness <= c["max_fist"]
+            and f.thumb_angle <= c["max_angle"])
+
+
 # Extra shape checks on top of MediaPipe's label, per pose.
-SHAPE_CHECKS: dict[str, Callable[[FrameFeatures], bool]] = {"Open_Palm": open_palm_shape}
+SHAPE_CHECKS: dict[str, Callable[[FrameFeatures], bool]] = {
+    "Open_Palm": open_palm_shape,
+    "Thumb_Up": thumb_up_shape,
+}
 
 _BUILTIN = [
     # id (= MediaPipe label), name, icon, description
-    ("Thumb_Up", "Thumbs up", "👍", "Fist with the thumb pointing up."),
+    ("Thumb_Up", "Thumbs up", "👍",
+     "Tight fist with the thumb sticking straight up, well above the fist."),
     ("Thumb_Down", "Thumbs down", "👎", "Fist with the thumb pointing down."),
     ("Closed_Fist", "Fist", "✊", "All fingers curled into a fist."),
     ("Open_Palm", "Open palm", "✋",

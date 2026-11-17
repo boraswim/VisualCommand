@@ -22,7 +22,8 @@ from visualcommand.features import HAND_CONNECTIONS
 from visualcommand.tracker import FRAME_SIZE, create_recognizer
 from visualcommand.winutil import set_dpi_aware
 
-POSE_TEXT = {"Open_Palm": "OPEN PALM ✋ facing the camera"}
+POSE_TEXT = {"Open_Palm": "OPEN PALM ✋ facing the camera",
+             "Thumb_Up": "THUMBS UP 👍"}
 
 
 def _natural(what: str, seconds: float) -> tuple[str, str, float, float]:
@@ -51,6 +52,12 @@ def plan_for(pose: str) -> list[tuple[str, str, float, float]]:
     steps = []
     for side in ("right", "left", "right", "left"):
         steps.append((f"{pose}:{side}", f"{side.upper()} hand: {text}", 1.3, 2.7))
+    if pose == "Thumb_Up":
+        steps.append(("face", "Hand on your FACE now (not a thumbs up):\n"
+                              "thumb on your cheek, chin on your hand, lean on your fist,\n"
+                              "rub your eye... change every few seconds", 2.0, 15.0))
+        steps.append(_natural("thumbs up", 25.0))
+        return steps
     steps.append(_natural(pose.replace("_", " ").lower(), 40.0))
     return steps
 

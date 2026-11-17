@@ -38,9 +38,9 @@ def test_each_restriction_on_its_own():
 
 
 def test_other_builtin_poses_unchanged():
-    f = FrameFeatures(t=0, hand=True, mp_label="Thumb_Up", mp_score=0.66,
-                      extended=(True, False, False, False, False), straightness=0.5, spread=0.3)
-    assert registry()["Thumb_Up"]().score(f) == 0.66
+    f = FrameFeatures(t=0, hand=True, mp_label="Victory", mp_score=0.66,
+                      extended=(False, True, True, False, False), straightness=0.5, spread=0.3)
+    assert registry()["Victory"]().score(f) == 0.66
 
 
 def test_palm_facing_same_for_both_hands_and_flips_for_back():

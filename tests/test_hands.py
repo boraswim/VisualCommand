@@ -10,8 +10,10 @@ OPEN = (True,) * 5
 
 
 def hand(t, center, label="None", score=0.0, extended=OPEN):
+    # thumb_* / fist values: a valid thumbs-up shape, since Thumb_Up is used as an example
     return FrameFeatures(t=t, hand=True, palm_center=center, mp_label=label, mp_score=score,
-                         extended=extended, palm_size=0.2)
+                         extended=extended, palm_size=0.2,
+                         thumb_lift=0.75, fist_tightness=0.2, thumb_angle=18.0)
 
 
 def steps(t0, t1, fps=15):
@@ -231,13 +233,13 @@ def test_two_real_hands_with_landmarks_do_not_crash():
     fired = []
     for i, t in enumerate(steps(0, 1.0)):
         left = features_from_landmarks(t, _real_hand_landmarks(cx=0.3), 4 / 3,
-                                       mp_label="Thumb_Up", mp_score=0.9)
+                                       mp_label="Victory", mp_score=0.9)
         right = features_from_landmarks(t, _real_hand_landmarks(cx=0.7), 4 / 3)
         hands = [left, right] if i % 2 else [right, left]
-        fired += slots.process(t, hands, "good", {"Thumb_Up"}, SENS)
+        fired += slots.process(t, hands, "good", {"Victory"}, SENS)
         kept = {id(h) for h in hands}
         assert [h for h in hands if id(h) not in kept] == []
-    assert fired == ["Thumb_Up"]
+    assert fired == ["Victory"]
 
 
 def test_frame_features_compare_by_identity():

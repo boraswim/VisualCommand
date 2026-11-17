@@ -8,7 +8,12 @@ SENS = {"hold_time": 0.4, "cooldown": 2.0, "min_score": 0.7}
 OPEN = (True, True, True, True, True)
 
 
+# Engine tests use Thumb_Up as an example pose; give the hand a valid thumbs-up shape.
+THUMB_SHAPE = dict(thumb_lift=0.75, fist_tightness=0.2, thumb_angle=18.0)
+
+
 def frame(t, label="None", score=0.0, hand=True, center=(0.5, 0.5), extended=OPEN, **kw):
+    kw = {**THUMB_SHAPE, **kw}
     return FrameFeatures(t=t, hand=hand, mp_label=label, mp_score=score,
                          palm_center=center, extended=extended, palm_size=0.2, **kw)
 

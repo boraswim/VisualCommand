@@ -400,6 +400,9 @@ class Tracker(threading.Thread):
             fingers = "".join("1" if e else "0" for e in f.extended)
             lines.append(f"Hand {i}: {f.mp_label} {f.mp_score:.2f} | mapped {pose or '-'} "
                          f"{score:.2f} | fingers {fingers}")
+            if f.mp_label == "Thumb_Up":
+                lines.append(f"   thumb: lift {f.thumb_lift:.2f} fist {f.fist_tightness:.2f} "
+                             f"angle {f.thumb_angle:.0f}")
             if f.mp_label == "Open_Palm":
                 lines.append(f"   palm: facing {f.palm_facing:.2f} straight {f.straightness:.2f} "
                              f"spread {f.spread:.2f} width {f.palm_width:.2f} tilt {f.tilt:.0f}")

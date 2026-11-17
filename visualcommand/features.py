@@ -50,6 +50,9 @@ class FrameFeatures:
     palm_width: float = 0.7       # index base to pinky base; shrinks as the hand turns sideways
     tilt: float = 0.0             # degrees the hand leans from upright (0 = fingers straight up)
     thumb_index_angle: float = 0.0  # degrees between thumb (MCP->tip) and index (MCP->tip)
+    thumb_lift: float = 0.0       # how far the thumb tip is above the index knuckle
+    thumb_angle: float = 0.0      # degrees the thumb (MCP->tip) leans from straight up
+    fist_tightness: float = 1.0   # largest fingertip-to-own-knuckle distance (small = tight fist)
     # +1 palm straight at the camera, -1 back of the hand, ~0 edge-on. Needs MediaPipe's
     # depth values and handedness; 1.0 when unknown.
     palm_facing: float = 1.0
@@ -222,5 +225,8 @@ def features_from_landmarks(t: float, norm: np.ndarray, aspect: float, lighting:
         palm_width=_dist(pts[5], pts[17]) / palm,
         tilt=float(np.degrees(np.arctan2(abs(up[0]), -up[1]))),
         thumb_index_angle=float(np.degrees(np.arccos(np.clip(cos, -1.0, 1.0)))),
+        thumb_lift=float((pts[5][1] - pts[4][1]) / palm),
+        thumb_angle=float(np.degrees(np.arctan2(abs(tv[0]), -tv[1]))),
+        fist_tightness=max(_dist(pts[tip], pts[mcp]) for mcp, _p, _d, tip in FINGERS.values()) / palm,
         lighting=lighting,
     )
