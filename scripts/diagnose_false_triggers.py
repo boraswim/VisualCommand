@@ -25,16 +25,33 @@ from visualcommand.winutil import set_dpi_aware
 POSE_TEXT = {"Open_Palm": "OPEN PALM ✋ facing the camera"}
 
 
+def _natural(what: str, seconds: float) -> tuple[str, str, float, float]:
+    return ("natural", "Act NORMALLY now: type, use the mouse, touch your face,\n"
+                       "stretch, pick something up, wave at someone...\n"
+                       f"Anything EXCEPT a deliberate {what}", 2.0, seconds)
+
+
 def plan_for(pose: str) -> list[tuple[str, str, float, float]]:
     """(label, text, ready seconds, act seconds)"""
+    if pose == "Point":
+        steps = []
+        for hand in ("right", "left"):
+            for to in ("RIGHT", "LEFT"):
+                for face in ("palm side", "back of hand"):
+                    steps.append((f"Point_{to.title()}:{hand}:{face}",
+                                  f"{hand.upper()} hand: FINGER GUN pointing to your {to}\n"
+                                  f"(thumb up, index out, others closed) · {face} to camera",
+                                  1.4, 2.6))
+        for to in ("RIGHT", "LEFT"):
+            steps.append((f"plain:{to}", f"Point to your {to} with ONLY the index finger\n"
+                                         "(thumb tucked in, not a finger gun)", 1.4, 2.6))
+        steps.append(_natural("finger gun", 30.0))
+        return steps
     text = POSE_TEXT.get(pose, pose)
     steps = []
     for side in ("right", "left", "right", "left"):
         steps.append((f"{pose}:{side}", f"{side.upper()} hand: {text}", 1.3, 2.7))
-    steps.append(("natural", "Act NORMALLY now: type, use the mouse, touch your face,\n"
-                             "stretch, pick something up, wave at someone...\n"
-                             f"Anything EXCEPT a deliberate {pose.replace('_', ' ').lower()}",
-                  2.0, 40.0))
+    steps.append(_natural(pose.replace("_", " ").lower(), 40.0))
     return steps
 
 

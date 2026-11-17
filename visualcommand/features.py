@@ -49,6 +49,7 @@ class FrameFeatures:
     spread: float = 1.0           # index tip to pinky tip
     palm_width: float = 0.7       # index base to pinky base; shrinks as the hand turns sideways
     tilt: float = 0.0             # degrees the hand leans from upright (0 = fingers straight up)
+    thumb_index_angle: float = 0.0  # degrees between thumb (MCP->tip) and index (MCP->tip)
     # +1 palm straight at the camera, -1 back of the hand, ~0 edge-on. Needs MediaPipe's
     # depth values and handedness; 1.0 when unknown.
     palm_facing: float = 1.0
@@ -204,6 +205,8 @@ def features_from_landmarks(t: float, norm: np.ndarray, aspect: float, lighting:
         bones = _dist(pts[pip], pts[mcp]) + _dist(pts[dip], pts[pip]) + _dist(pts[tip], pts[dip])
         straight.append(_dist(pts[tip], pts[mcp]) / (bones or 1e-6))
     up = pts[9] - pts[WRIST]
+    tv, iv = pts[4] - pts[2], pts[8] - pts[5]
+    cos = float(np.dot(tv, iv) / ((np.linalg.norm(tv) * np.linalg.norm(iv)) or 1e-9))
     return FrameFeatures(
         t=t, hand=True, landmarks=norm, handedness=handedness,
         mp_label=mp_label or "None", mp_score=float(mp_score),
@@ -218,5 +221,6 @@ def features_from_landmarks(t: float, norm: np.ndarray, aspect: float, lighting:
         spread=_dist(pts[8], pts[20]) / palm,
         palm_width=_dist(pts[5], pts[17]) / palm,
         tilt=float(np.degrees(np.arctan2(abs(up[0]), -up[1]))),
+        thumb_index_angle=float(np.degrees(np.arccos(np.clip(cos, -1.0, 1.0)))),
         lighting=lighting,
     )

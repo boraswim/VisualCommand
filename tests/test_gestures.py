@@ -133,11 +133,40 @@ def test_arm_gesture_gates_other_gestures():
     ("Three_Fingers", (False, True, True, True, False), 2.0, (0, -1)),
     ("OK_Sign", (False, False, True, True, True), 0.1, (0, -1)),
     ("Pinch", (True, True, False, False, False), 0.1, (0, -1)),
-    ("Point_Right", (False, True, False, False, False), 2.0, (1, 0)),
-    ("Point_Left", (False, True, False, False, False), 2.0, (-1, 0)),
+    ("Point_Right", (True, True, False, False, False), 2.0, (1, 0)),
+    ("Point_Left", (True, True, False, False, False), 2.0, (-1, 0)),
 ])
 def test_rule_pose_matches_only_its_shape(gid, extended, pinch, index_dir):
-    f = frame(0, extended=extended, pinch=pinch, index_dir=index_dir)
+    f = frame(0, extended=extended, pinch=pinch, index_dir=index_dir, thumb_index_angle=70)
     rule_ids = ["Rock", "Call_Me", "Three_Fingers", "OK_Sign", "Pinch", "Point_Right", "Point_Left"]
     matches = [r for r in rule_ids if registry()[r]().score(f) > 0]
     assert matches == [gid]
+
+
+def _gun(**over):
+    kw = dict(extended=(True, True, False, False, False), index_dir=(1.0, 0.0),
+              thumb_index_angle=70.0, pinch=2.0)
+    kw.update(over)
+    return frame(0, **kw)
+
+
+def test_finger_gun_points_both_ways_and_tolerates_tilt():
+    reg = registry()
+    assert reg["Point_Right"]().score(_gun()) > 0
+    assert reg["Point_Left"]().score(_gun(index_dir=(-1.0, 0.0))) > 0
+    # measured: pointing up to ~40 degrees above horizontal
+    assert reg["Point_Left"]().score(_gun(index_dir=(-0.77, -0.64))) > 0
+    assert reg["Point_Right"]().score(_gun(index_dir=(0.6, -0.8))) == 0   # too steep
+
+
+def test_plain_pointing_with_thumb_tucked_is_not_a_finger_gun():
+    """Measured: thumb lies along the index (11-20 degrees) when tucked."""
+    reg = registry()
+    tucked = _gun(extended=(False, True, False, False, False), thumb_index_angle=15)
+    thumb_along = _gun(thumb_index_angle=15)
+    for f in (tucked, thumb_along):
+        assert reg["Point_Right"]().score(f) == 0
+
+
+def test_finger_gun_needs_other_fingers_closed():
+    assert registry()["Point_Right"]().score(_gun(extended=(True, True, True, False, False))) == 0

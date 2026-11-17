@@ -163,16 +163,29 @@ def _fake_result(norm_landmarks, label="None", side="Right"):
 
 
 def _pointing_hand(direction):
-    """Index finger out, other fingers curled, pointing along +x or -x in the image."""
+    """Finger gun: index out along +x or -x in the image, thumb up, others curled."""
     lm = _real_hand_landmarks()
-    s = 1 if direction > 0 else -1
-    lm[5:9] = lm[5] + np.array([[0, 0], [s * 0.06, 0], [s * 0.11, 0], [s * 0.15, 0]])
+    # index out to image-left (-x), the side the thumb is on in this template
+    lm[5:9] = lm[5] + np.array([[0, 0], [-0.06, 0], [-0.11, 0], [-0.15, 0]])
     for mcp, pip, dip, tip in ((9, 10, 11, 12), (13, 14, 15, 16), (17, 18, 19, 20)):
         lm[pip] = lm[mcp] + np.array([0, -0.03])
         lm[dip] = lm[mcp] + np.array([0, -0.01])
         lm[tip] = lm[mcp] + np.array([0, 0.02])
-    lm[2:5] = _tucked_thumb(_real_hand_landmarks())[2:5]
+    # thumb sticking up, away from the palm
+    lm[2] = lm[0] + np.array([-0.07, -0.09])
+    lm[3] = lm[0] + np.array([-0.10, -0.17])
+    lm[4] = lm[0] + np.array([-0.12, -0.25])
+    if direction > 0:                  # the mirror-image hand points to image-right
+        lm = _mirror(lm)
     return lm
+
+
+def test_pointing_hand_template_is_a_finger_gun():
+    from visualcommand.gestures.rule_poses import finger_gun
+    for d in (-1, 1):
+        f = features_from_landmarks(0, _pointing_hand(d), 4 / 3)
+        assert f.extended == (True, True, False, False, False), f.extended
+        assert finger_gun(f)
 
 
 def test_pointing_right_in_your_view_is_point_right():

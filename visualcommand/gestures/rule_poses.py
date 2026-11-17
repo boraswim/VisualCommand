@@ -95,14 +95,27 @@ class CallMe(PoseGesture):
         return MATCH if f.hand and _pattern(f, (True, False, False, False, True)) else 0.0
 
 
+# Finger gun, measured on real hands (both hands, palm or back to the camera):
+#   fingers read thumb+index out, others curled in 86-98% of frames
+#   thumb-to-index angle 45-83 deg (plain pointing with the thumb tucked: 11-20 deg)
+#   index direction up to ~40 deg above horizontal
+FINGER_GUN_MIN_THUMB_ANGLE = 35.0
+POINT_MIN_HORIZONTAL = 0.7     # |dx| of the index direction: within ~45 deg of horizontal
+
+
+def finger_gun(f: FrameFeatures) -> bool:
+    """Thumb up, index out, middle/ring/pinky curled. Works with palm or back facing."""
+    return (f.hand and _pattern(f, (True, True, False, False, False))
+            and f.thumb_index_angle >= FINGER_GUN_MIN_THUMB_ANGLE)
+
+
 class _PointSide(PoseGesture):
     sign = 1.0
 
     def score(self, f: FrameFeatures) -> float:
-        if not f.hand or not _pattern(f, (False, True, False, False, False), ignore_thumb=True):
+        if not finger_gun(f):
             return 0.0
-        dx, dy = f.index_dir
-        return MATCH if dx * self.sign > 0.8 and abs(dy) < 0.6 else 0.0
+        return MATCH if f.index_dir[0] * self.sign >= POINT_MIN_HORIZONTAL else 0.0
 
 
 @register_gesture
@@ -110,7 +123,8 @@ class PointLeft(_PointSide):
     id = "Point_Left"
     name = "Point left"
     icon = "👈"
-    description = "Only the index finger out, pointing to your left."
+    description = ("Finger gun pointing to your left: thumb up, index out, other fingers "
+                   "closed. Palm or back of the hand to the camera.")
     order = 25
     sign = -1.0
 
@@ -120,6 +134,7 @@ class PointRight(_PointSide):
     id = "Point_Right"
     name = "Point right"
     icon = "👉"
-    description = "Only the index finger out, pointing to your right."
+    description = ("Finger gun pointing to your right: thumb up, index out, other fingers "
+                   "closed. Palm or back of the hand to the camera.")
     order = 26
     sign = 1.0
