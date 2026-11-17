@@ -44,6 +44,14 @@ class FrameFeatures:
     index_reach: float = 1.0                  # index-tip to middle-finger base / palm_size
     index_tip: tuple[float, float] = (0.0, 0.0)
     index_dir: tuple[float, float] = (0.0, 0.0)  # unit vector index MCP -> tip
+    # Hand shape (all relative to palm_size where a distance):
+    straightness: float = 1.0     # least-straight of the 4 fingers (1 = perfectly straight)
+    spread: float = 1.0           # index tip to pinky tip
+    palm_width: float = 0.7       # index base to pinky base; shrinks as the hand turns sideways
+    tilt: float = 0.0             # degrees the hand leans from upright (0 = fingers straight up)
+    # +1 palm straight at the camera, -1 back of the hand, ~0 edge-on. Needs MediaPipe's
+    # depth values and handedness; 1.0 when unknown.
+    palm_facing: float = 1.0
     lighting: str = "good"
     extra: dict = field(default_factory=dict)
 
@@ -100,19 +108,40 @@ def build_hands(t: float, result, aspect: float, lighting: str,
     if result is None or not result.hand_landmarks:
         return hands
     for i, lm in enumerate(result.hand_landmarks):
-        norm = np.array([[p.x, p.y] for p in lm], dtype=np.float32)
+        raw = np.array([[p.x, p.y, getattr(p, "z", 0.0)] for p in lm], dtype=np.float32)
+        norm = raw[:, :2].copy()
         if to_user_view:
             norm[:, 0] = 1.0 - norm[:, 0]
         g, h = _top(result.gestures, i), _top(result.handedness, i)
+        side = h.category_name if h else ""
         f = features_from_landmarks(
             t, norm, aspect, lighting,
             mp_label=g.category_name if g else "None",
             mp_score=g.score if g else 0.0,
-            handedness=h.category_name if h else "",
+            handedness=side,
         )
+        f.palm_facing = palm_facing(raw, aspect, side)
         f.extra["handedness_score"] = float(h.score) if h else 0.0
         hands.append(f)
     return hands
+
+
+def palm_facing(raw: np.ndarray, aspect: float, handedness: str) -> float:
+    """How directly the palm faces the camera: +1 palm, -1 back of hand, ~0 edge-on.
+
+    Uses the palm plane (wrist, index base, pinky base) in 3D from MediaPipe's
+    natural-view landmarks (x, y, z). Which side of that plane is the palm depends
+    on left/right hand. Measured: deliberate open palms 0.97-0.98 with either hand,
+    a casually raised hand 0.74-0.81.
+    """
+    if handedness not in ("Left", "Right") or raw.shape[1] < 3 or not np.any(raw[:, 2]):
+        return 1.0
+    p = raw.astype(np.float64).copy()
+    p[:, 0] *= aspect
+    n = np.cross(p[5] - p[0], p[17] - p[0])
+    norm = float(np.linalg.norm(n)) or 1e-9
+    sign = 1.0 if handedness == "Right" else -1.0
+    return float(-n[2] / norm * sign)
 
 
 def plausible_hand(f: FrameFeatures) -> bool:
@@ -170,6 +199,11 @@ def features_from_landmarks(t: float, norm: np.ndarray, aspect: float, lighting:
     centre = norm[[0, 5, 9, 13, 17]].mean(axis=0)
     d = pts[8] - pts[5]
     n = float(np.linalg.norm(d)) or 1e-6
+    straight = []
+    for mcp, pip, dip, tip in FINGERS.values():
+        bones = _dist(pts[pip], pts[mcp]) + _dist(pts[dip], pts[pip]) + _dist(pts[tip], pts[dip])
+        straight.append(_dist(pts[tip], pts[mcp]) / (bones or 1e-6))
+    up = pts[9] - pts[WRIST]
     return FrameFeatures(
         t=t, hand=True, landmarks=norm, handedness=handedness,
         mp_label=mp_label or "None", mp_score=float(mp_score),
@@ -180,5 +214,9 @@ def features_from_landmarks(t: float, norm: np.ndarray, aspect: float, lighting:
         index_reach=_dist(pts[8], pts[9]) / palm,
         index_tip=(float(norm[8][0]), float(norm[8][1])),
         index_dir=(float(d[0] / n), float(d[1] / n)),
+        straightness=float(min(straight)),
+        spread=_dist(pts[8], pts[20]) / palm,
+        palm_width=_dist(pts[5], pts[17]) / palm,
+        tilt=float(np.degrees(np.arctan2(abs(up[0]), -up[1]))),
         lighting=lighting,
     )
