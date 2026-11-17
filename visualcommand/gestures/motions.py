@@ -30,23 +30,45 @@ class _History(MotionGesture):
 # --- swipes --------------------------------------------------------------------
 
 class _Swipe(_History):
+    """A fast stroke of a mostly-open hand.
+
+    Real swipes are messy: the hand blurs (MediaPipe loses it for a frame or two),
+    fingers look half-curled mid-motion and the path curves. So: short gaps are
+    bridged, the hand only has to look open in most samples, and the stroke may
+    drift sideways a fair bit.
+    """
     direction = (1.0, 0.0)
-    window = 0.6
+    window = 0.8          # whole stroke must fit in this time
+    max_gap = 0.3         # hand may vanish this long mid-stroke
+    open_share = 0.5      # at least this share of samples show 3+ fingers out
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.last_seen = -1e9
 
     def update(self, f: FrameFeatures, settings: dict) -> bool:
-        # Only an open hand swipes; anything else (or no hand) resets the stroke.
-        if not f.hand or not f.open_hand:
-            self.reset()
+        if not f.hand:
+            if f.t - self.last_seen > self.max_gap:
+                self.reset()
             return False
-        self._push(f.t, f.palm_center)
+        self.last_seen = f.t
+        self._push(f.t, (f.palm_center, sum(f.extended[1:]) >= 3 or f.mp_label == "Open_Palm"))
         if len(self.hist) < 3:
             return False
-        (x0, y0), (x1, y1) = self.hist[0][1], self.hist[-1][1]
-        dx, dy = x1 - x0, y1 - y0
+        samples = [v for _, v in self.hist]
+        if sum(1 for _, is_open in samples if is_open) < self.open_share * len(samples):
+            return False
         ux, uy = self.direction
-        along = dx * ux + dy * uy
-        across = abs(dx * uy - dy * ux)
-        if along >= settings.get("swipe_distance", 0.3) and across <= 0.5 * along:
+        x1, y1 = samples[-1][0]
+        # Measure from the sample furthest *behind* the current position, so a
+        # stroke that started with a little back-swing still counts.
+        best_along, best_across = 0.0, 0.0
+        for (x0, y0), _ in samples[:-2]:
+            dx, dy = x1 - x0, y1 - y0
+            along = dx * ux + dy * uy
+            if along > best_along:
+                best_along, best_across = along, abs(dx * uy - dy * ux)
+        if best_along >= settings.get("swipe_distance", 0.25) and best_across <= 0.75 * best_along:
             self.reset()
             return True
         return False

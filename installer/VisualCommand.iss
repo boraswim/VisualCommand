@@ -36,7 +36,9 @@ CloseApplications=no
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "autostart"; Description: "Start {#MyAppName} when I sign in to Windows"; GroupDescription: "Startup:"
+; Only offered on a fresh install. On upgrades the app's own "Start with Windows"
+; setting (the same Run value) is left exactly as the user set it.
+Name: "autostart"; Description: "Start {#MyAppName} when I sign in to Windows"; GroupDescription: "Startup:"; Check: not IsUpgrade
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Shortcuts:"; Flags: unchecked
 
 [Files]
@@ -52,13 +54,27 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExe}"; Tasks: deskto
 
 [Registry]
 ; Start with Windows. The app's Settings window toggles this same value.
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "{#MyAppName}"; ValueData: """{app}\{#MyAppExe}"" --tray"; Flags: uninsdeletevalue; Tasks: autostart
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: "{#MyAppName}"; Flags: deletevalue dontcreatekey; Tasks: not autostart
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "{#MyAppName}"; ValueData: """{app}\{#MyAppExe}"" --tray"; Flags: uninsdeletevalue; Tasks: autostart; Check: not IsUpgrade
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: "{#MyAppName}"; Flags: deletevalue dontcreatekey; Tasks: not autostart; Check: not IsUpgrade
 
 [Run]
 Filename: "{app}\{#MyAppExe}"; Description: "Launch {#MyAppName} now"; Flags: nowait postinstall skipifsilent
 
 [Code]
+var
+  UpgradeChecked, WasInstalled: Boolean;
+
+function IsUpgrade(): Boolean;
+begin
+  if not UpgradeChecked then
+  begin
+    WasInstalled := RegKeyExists(HKCU,
+      'Software\Microsoft\Windows\CurrentVersion\Uninstall\{8C1F2B7E-4D3A-4F6B-9E21-6A7C3D5B9F10}_is1');
+    UpgradeChecked := True;
+  end;
+  Result := WasInstalled;
+end;
+
 procedure StopRunningApp();
 var
   ResultCode: Integer;

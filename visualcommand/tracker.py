@@ -15,8 +15,8 @@ import cv2
 import numpy as np
 
 from visualcommand import lighting
-from visualcommand.engine import GestureEngine
-from visualcommand.features import HAND_CONNECTIONS, FrameFeatures, build_features
+from visualcommand.features import HAND_CONNECTIONS, FrameFeatures, build_hands, plausible_hand
+from visualcommand.hands import HandSlots
 from visualcommand.paths import model_path
 from visualcommand.winutil import session_locked
 
@@ -37,7 +37,7 @@ class Tracker(threading.Thread):
         super().__init__(name="tracker", daemon=True)
         self.app = app
         self.cfg = app.cfg
-        self._stop = threading.Event()
+        self._stop_event = threading.Event()  # not '_stop': that name is used by threading.Thread itself
         self._wake = threading.Event()
         self.status = OFF
         self.lighting = lighting.GOOD
@@ -47,7 +47,8 @@ class Tracker(threading.Thread):
         self._cap: cv2.VideoCapture | None = None
         self._cap_index: int | None = None
         self._recognizer = None
-        self._engine = GestureEngine()
+        self._recognizer_strictness: float | None = None
+        self._hands = HandSlots(2)
         self._enhancer = lighting.Enhancer()
         self._last_ts = 0
         self._last_hand = 0.0
@@ -57,7 +58,7 @@ class Tracker(threading.Thread):
 
     # --- control from other threads ----------------------------------------------
     def stop(self) -> None:
-        self._stop.set()
+        self._stop_event.set()
         self._wake.set()
 
     def wake(self) -> None:
@@ -120,8 +121,13 @@ class Tracker(threading.Thread):
             pass
 
     def _ensure_recognizer(self) -> None:
-        if self._recognizer is not None:
+        # Rounded so dragging the settings slider doesn't rebuild the model on every pixel.
+        strictness = round(float(self.cfg.get("hand_strictness", 0.7)) * 20) / 20
+        if self._recognizer is not None and self._recognizer_strictness == strictness:
             return
+        if self._recognizer is not None:
+            self._recognizer.close()
+            self._recognizer = None
         from mediapipe.tasks.python import vision
         from mediapipe.tasks.python.core.base_options import BaseOptions
 
@@ -130,12 +136,19 @@ class Tracker(threading.Thread):
         options = vision.GestureRecognizerOptions(
             base_options=BaseOptions(model_asset_buffer=model),
             running_mode=vision.RunningMode.VIDEO,
-            num_hands=1,
-            min_hand_detection_confidence=0.4,
-            min_hand_presence_confidence=0.4,
-            min_tracking_confidence=0.4,
+            # Two hands: if something that isn't a hand (a shadow on clothing) gets
+            # picked up, your real hand still has a free slot and is detected.
+            num_hands=2,
+            # Presence = "is this still a hand?" from the landmark model. Keeping it
+            # high makes MediaPipe drop false hands instead of tracking them forever.
+            min_hand_detection_confidence=strictness,
+            min_hand_presence_confidence=strictness,
+            min_tracking_confidence=max(0.3, strictness - 0.1),
         )
         self._recognizer = vision.GestureRecognizer.create_from_options(options)
+        self._recognizer_strictness = strictness
+        self._last_ts = 0
+        log.info("Hand detector ready (strictness %.2f)", strictness)
 
     def _wait(self, seconds: float) -> None:
         self._wake.wait(seconds)
@@ -143,20 +156,36 @@ class Tracker(threading.Thread):
 
     # --- main loop -------------------------------------------------------------------
     def run(self) -> None:
-        try:
-            self._loop()
-        except Exception:
-            log.exception("Tracker crashed")
-            self._set_status(ERROR)
-        finally:
-            self._close()
-            if self._recognizer is not None:
-                self._recognizer.close()
+        # A bug in one frame must never leave the app silently dead: log it, reset
+        # and carry on. Only give up if it keeps failing straight away.
+        failures: deque = deque(maxlen=5)
+        while not self._stop_event.is_set():
+            try:
+                self._loop()
+            except Exception:
+                log.exception("Tracker error, restarting")
+                now = time.monotonic()
+                failures.append(now)
+                self._close()
+                self._hands = HandSlots(2)
+                if self._recognizer is not None:
+                    self._recognizer.close()
+                    self._recognizer = None
+                if len(failures) == failures.maxlen and now - failures[0] < 60:
+                    self._set_status(ERROR)
+                    self.app.notify("Something keeps going wrong. Turn tracking on again to retry.",
+                                    title="Tracking stopped", error=True)
+                    self.cfg.set("tracking_enabled", False)
+                    failures.clear()
+                self._wait(2.0)
+        self._close()
+        if self._recognizer is not None:
+            self._recognizer.close()
 
     def _loop(self) -> None:
         next_due = 0.0
         next_lock_check = 0.0
-        while not self._stop.is_set():
+        while not self._stop_event.is_set():
             now = time.monotonic()
 
             if not self.cfg.get("tracking_enabled", True):
@@ -185,13 +214,18 @@ class Tracker(threading.Thread):
                     self._set_status(CAMERA_BUSY)
                     if not self._busy_notified:
                         self._busy_notified = True
-                        self.app.notify("Camera is unavailable (in use by another app?). Retrying…")
+                        self.app.notify("It may be in use by another app. Retrying every 10 seconds.",
+                                        title="Camera unavailable", error=True)
                     self._wait(10.0)
                     continue
                 self._busy_notified = False
                 self._ensure_recognizer()
+                # Nothing fires in the first second (e.g. a hand still up right after unlocking).
+                self._hands.suppress(time.monotonic(), 1.0)
                 self._set_status(RUNNING)
                 next_due = 0.0
+
+            self._ensure_recognizer()   # no-op unless the strictness setting changed
 
             if self._open_camera_settings:
                 self._open_camera_settings = False
@@ -239,13 +273,14 @@ class Tracker(threading.Thread):
         self._last_ts = ts
         result = self._recognizer.recognize_for_video(image, ts)
 
-        f = build_features(now, result, size[0] / size[1], light)
-        if f.hand:
+        detected = build_hands(now, result, size[0] / size[1], light)
+        hands = [h for h in detected if plausible_hand(h)]
+        if hands:
             self._last_hand = now
 
         mappings = self.cfg.mappings()
-        events = self._engine.process(
-            f, set(mappings), self.cfg.sensitivity(),
+        events = self._hands.process(
+            now, hands, light, set(mappings), self.cfg.sensitivity(),
             arm_id=self.cfg.get("arm_gesture", ""), arm_window=float(self.cfg.get("arm_window", 5.0)))
         for gid in events:
             self.app.on_gesture(gid)
@@ -255,26 +290,38 @@ class Tracker(threading.Thread):
         st["proc_ms"].append((time.perf_counter() - t0) * 1000)
 
         if self.preview:
-            self._show_preview(small, f)
+            kept = {id(h) for h in hands}
+            self._show_preview(small, hands, [h for h in detected if id(h) not in kept])
         else:
             self._close_preview()
 
-    def _show_preview(self, img: np.ndarray, f: FrameFeatures) -> None:
+    def _show_preview(self, img: np.ndarray, hands: list[FrameFeatures],
+                      rejected: list[FrameFeatures]) -> None:
         view = img  # already a private, resized copy
         h, w = view.shape[:2]
-        if f.hand and f.landmarks is not None:
+        colours = [(90, 220, 120), (240, 170, 60)]          # hand 1 green, hand 2 blue
+        for f, colour in [(r, (60, 60, 230)) for r in rejected] + list(zip(
+                [s.current for s in self._hands.slots], colours)):
+            if f is None or not f.hand or f.landmarks is None:
+                continue
             pts = [(int(x * w), int(y * h)) for x, y in f.landmarks]
             for a, b in HAND_CONNECTIONS:
-                cv2.line(view, pts[a], pts[b], (90, 220, 120), 2, cv2.LINE_AA)
+                cv2.line(view, pts[a], pts[b], colour, 2, cv2.LINE_AA)
             for p in pts:
                 cv2.circle(view, p, 3, (255, 255, 255), -1, cv2.LINE_AA)
-        pose, score = self._engine.last_pose
-        fingers = "".join("1" if e else "0" for e in f.extended)
         ms = np.mean(self.stats["proc_ms"]) if self.stats["proc_ms"] else 0
-        lines = [
-            f"Model: {f.mp_label} {f.mp_score:.2f}" if f.hand else "No hand",
-            f"Mapped pose: {pose or '-'} {score:.2f}   fingers {fingers}",
-            f"Lighting: {self.lighting}   {ms:.1f} ms/frame",
+        lines = []
+        for i, s in enumerate(self._hands.slots, 1):
+            f = s.current
+            if f is None or not f.hand:
+                lines.append(f"Hand {i}: -")
+                continue
+            pose, score = s.engine.last_pose
+            fingers = "".join("1" if e else "0" for e in f.extended)
+            lines.append(f"Hand {i}: {f.mp_label} {f.mp_score:.2f} | mapped {pose or '-'} "
+                         f"{score:.2f} | fingers {fingers}")
+        lines += [
+            f"Lighting: {self.lighting}   {ms:.1f} ms/frame" + (f"   rejected {len(rejected)}" if rejected else ""),
             "Esc closes. Frames are never saved.",
         ]
         for i, text in enumerate(lines):

@@ -10,9 +10,14 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
+CONFIG_VERSION = 2
+
 DEFAULTS: dict[str, Any] = {
-    "version": 1,
+    "version": CONFIG_VERSION,
     "tracking_enabled": True,
+    # MediaPipe confidence needed to accept / keep a hand (0.3 lenient .. 0.9 strict).
+    # Higher rejects shadows and clothing folds but may lose hands in poor light.
+    "hand_strictness": 0.7,
     "notifications": True,
     "camera_index": 0,
     # "auto": enhance only when the scene is dark / flat / backlit. "always" | "off".
@@ -27,7 +32,7 @@ DEFAULTS: dict[str, Any] = {
         "hold_time": 0.4,       # seconds a pose must be held
         "cooldown": 2.0,        # seconds before the same gesture can fire again
         "min_score": 0.7,       # pose confidence needed (0..1)
-        "swipe_distance": 0.30, # fraction of the frame a swipe must travel
+        "swipe_distance": 0.25, # fraction of the frame a swipe must travel
     },
     # gesture id -> {"action": action id, "params": {...}}
     "mappings": {
@@ -65,8 +70,17 @@ class Config:
             loaded = json.loads(self.path.read_text(encoding="utf-8"))
             with self._lock:
                 self.data = _merge(DEFAULTS, loaded)
+                self._migrate(int(loaded.get("version", 1)))
         except Exception:
             log.exception("Config unreadable, using defaults")
+
+    def _migrate(self, from_version: int) -> None:
+        if from_version < 2:
+            # 0.1.0 shipped a swipe distance that was too demanding; move users who
+            # never changed it to the new default.
+            if self.data["sensitivity"].get("swipe_distance") == 0.3:
+                self.data["sensitivity"]["swipe_distance"] = DEFAULTS["sensitivity"]["swipe_distance"]
+        self.data["version"] = CONFIG_VERSION
 
     def save(self) -> None:
         with self._lock:

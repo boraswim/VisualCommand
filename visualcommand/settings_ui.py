@@ -213,7 +213,7 @@ class SettingsWindow:
         r += 1
 
         notif = tk.BooleanVar(value=self.cfg.get("notifications", True))
-        ttk.Checkbutton(f, text="Show a notification when a gesture runs an action", variable=notif,
+        ttk.Checkbutton(f, text="Show a popup when a gesture runs an action", variable=notif,
                         command=lambda: self.cfg.set("notifications", notif.get())
                         ).grid(row=r, column=0, columnspan=3, sticky="w", pady=4)
         r += 1
@@ -277,7 +277,7 @@ class SettingsWindow:
         sens = self.cfg.sensitivity()
         self._scales: list = []
 
-        def slider(row, label, key, lo, hi, fmt, help_text, top=False):
+        def slider(row, label, key, lo, hi, fmt, help_text, top=False, integer=True):
             ttk.Label(f, text=label).grid(row=row, column=0, sticky="w", pady=(8, 0))
             value_lbl = ttk.Label(f, width=8)
             value_lbl.grid(row=row, column=2, sticky="e")
@@ -291,7 +291,7 @@ class SettingsWindow:
                 v = round(var.get(), 2)
                 value_lbl.configure(text=fmt.format(v))
                 if top:
-                    self.cfg.data[key] = int(round(v))
+                    self.cfg.data[key] = int(round(v)) if integer else v
                 else:
                     self.cfg.data["sensitivity"][key] = v
                 self._save_later()
@@ -302,18 +302,21 @@ class SettingsWindow:
             changed()
             self._scales.append((var, key, top, changed))
 
-        slider(0, "Hold time", "hold_time", 0.2, 1.5, "{:.2f} s",
+        slider(0, "Hand detection strictness", "hand_strictness", 0.3, 0.9, "{:.2f}",
+               "Raise if shadows or clothing get detected as hands; lower if real hands are "
+               "missed in dim light.", top=True, integer=False)
+        slider(2, "Hold time", "hold_time", 0.2, 1.5, "{:.2f} s",
                "How long a pose must be held before it fires.")
-        slider(2, "Cooldown", "cooldown", 0.5, 5.0, "{:.1f} s",
+        slider(4, "Cooldown", "cooldown", 0.5, 5.0, "{:.1f} s",
                "Minimum time before the same gesture can fire again.")
-        slider(4, "Pose confidence", "min_score", 0.4, 0.95, "{:.2f}",
+        slider(6, "Pose confidence", "min_score", 0.4, 0.95, "{:.2f}",
                "Higher = fewer accidental triggers, but poses must be clearer.")
-        slider(6, "Swipe distance", "swipe_distance", 0.15, 0.6, "{:.0%}",
+        slider(8, "Swipe distance", "swipe_distance", 0.1, 0.6, "{:.0%}",
                "How far across the camera view a swipe must travel.")
-        ttk.Separator(f).grid(row=8, column=0, columnspan=3, sticky="ew", pady=12)
-        slider(9, "Idle checks / second", "idle_fps", 1, 10, "{:.0f}",
+        ttk.Separator(f).grid(row=10, column=0, columnspan=3, sticky="ew", pady=12)
+        slider(11, "Idle checks / second", "idle_fps", 1, 10, "{:.0f}",
                "When no hand is visible. Lower uses less CPU but reacts later.", top=True)
-        slider(11, "Tracking frames / second", "active_fps", 5, 30, "{:.0f}",
+        slider(13, "Tracking frames / second", "active_fps", 5, 30, "{:.0f}",
                "While a hand is visible. Higher makes swipes more reliable.", top=True)
 
         def reset():
@@ -322,7 +325,7 @@ class SettingsWindow:
                 changed()   # Scale doesn't call its command for programmatic changes
 
         ttk.Button(f, text="Reset to defaults", command=reset).grid(
-            row=13, column=0, sticky="w", pady=16)
+            row=15, column=0, sticky="w", pady=16)
         return f
 
     def _save_later(self) -> None:

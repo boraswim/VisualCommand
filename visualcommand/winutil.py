@@ -55,8 +55,43 @@ class SingleInstance:
         return bool(self._event) and _k32.WaitForSingleObject(self._event, timeout_ms) == WAIT_OBJECT_0
 
 
-def session_locked() -> bool:
-    """True while the workstation is locked (the input desktop isn't ours)."""
+try:
+    _wts = ctypes.WinDLL("wtsapi32", use_last_error=True)
+    _wts.WTSQuerySessionInformationW.argtypes = (
+        wintypes.HANDLE, wintypes.DWORD, ctypes.c_int,
+        ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(wintypes.DWORD))
+    _wts.WTSQuerySessionInformationW.restype = wintypes.BOOL
+    _wts.WTSFreeMemory.argtypes = (ctypes.c_void_p,)
+except OSError:
+    _wts = None
+
+_WTS_CURRENT_SESSION = 0xFFFFFFFF
+_WTSSessionInfoEx = 25
+_WTS_SESSIONSTATE_LOCK = 0
+
+
+def _wts_locked() -> bool | None:
+    """Session lock flag from WTSINFOEX (None if unavailable)."""
+    if _wts is None:
+        return None
+    buf, size = ctypes.c_void_p(), wintypes.DWORD()
+    if not _wts.WTSQuerySessionInformationW(None, _WTS_CURRENT_SESSION, _WTSSessionInfoEx,
+                                           ctypes.byref(buf), ctypes.byref(size)):
+        return None
+    try:
+        # WTSINFOEXW: DWORD Level; then (8-byte aligned, it holds LARGE_INTEGERs)
+        # WTSINFOEX_LEVEL1_W { ULONG SessionId; WTS_CONNECTSTATE_CLASS SessionState;
+        # LONG SessionFlags; ... }  ->  SessionFlags at byte 16.
+        level = ctypes.c_uint32.from_address(buf.value).value
+        if level != 1 or size.value < 20:
+            return None
+        flags = ctypes.c_int32.from_address(buf.value + 16).value
+        return flags == _WTS_SESSIONSTATE_LOCK
+    finally:
+        _wts.WTSFreeMemory(buf)
+
+
+def _input_desktop_locked() -> bool:
     DESKTOP_SWITCHDESKTOP = 0x0100
     h = _u32.OpenInputDesktop(0, False, DESKTOP_SWITCHDESKTOP)
     if not h:
@@ -64,6 +99,16 @@ def session_locked() -> bool:
     ok = _u32.SwitchDesktop(h)
     _u32.CloseDesktop(h)
     return not ok
+
+
+def session_locked() -> bool:
+    """True while the workstation is locked.
+
+    The session's own lock flag is authoritative (the Windows 10/11 lock screen
+    runs on the normal desktop, so desktop checks alone miss it); the
+    input-desktop check also catches the secure desktop (Ctrl+Alt+Del, UAC).
+    """
+    return bool(_wts_locked()) or _input_desktop_locked()
 
 
 def set_dpi_aware() -> None:
@@ -113,7 +158,13 @@ def set_autostart(enabled: bool) -> None:
 
 
 def repair_autostart() -> None:
-    """If autostart is on but points somewhere else (app moved / upgraded), fix the path."""
+    """If autostart is on but points somewhere else (app moved / upgraded), fix the path.
+
+    Only the installed (frozen) app does this, so running from source never
+    hijacks the installed app's startup entry.
+    """
+    if not is_frozen():
+        return
     value = autostart_value()
     if value is not None and value != autostart_command():
         set_autostart(True)

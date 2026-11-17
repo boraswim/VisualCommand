@@ -10,8 +10,14 @@ MOTION_COOLDOWN = 1.0   # motions are quick; cap their cooldown at this
 POSE_SUPPRESS = 0.6     # after a motion fires, ignore poses briefly (the hand is mid-move)
 
 
+class ArmState:
+    """Shared between the per-hand engines: arming with one hand unlocks both."""
+    armed_until = 0.0
+
+
 class GestureEngine:
-    def __init__(self) -> None:
+    def __init__(self, arm: ArmState | None = None) -> None:
+        self.arm = arm or ArmState()
         self._classes = {g.id: g for g in catalogue()}
         self._instances: dict[str, object] = {}
         self._candidate: str | None = None
@@ -20,7 +26,6 @@ class GestureEngine:
         self._fired = False
         self._last_fire: dict[str, float] = {}
         self._suppress_poses_until = 0.0
-        self._armed_until = 0.0
         self.last_pose: tuple[str, float] = ("", 0.0)   # for the preview overlay
 
     def _instance(self, gid: str):
@@ -60,9 +65,9 @@ class GestureEngine:
             if not arm_id:
                 return True
             if gid == arm_id:
-                self._armed_until = t + arm_window
+                self.arm.armed_until = t + arm_window
                 return True
-            return t <= self._armed_until
+            return t <= self.arm.armed_until
 
         # --- motions ---
         motion_fired = False

@@ -17,6 +17,8 @@ def screenshot(ctx, params):
     import mss
     import mss.tools
 
+    if hasattr(ctx, "hide_popups"):
+        ctx.hide_popups()          # don't capture our own previous popup
     path = screenshots_dir() / f"Screenshot_{datetime.now():%Y-%m-%d_%H-%M-%S}.png"
     with mss.mss() as sct:
         shot = sct.grab(sct.monitors[0])   # monitor 0 = the whole virtual desktop

@@ -185,6 +185,40 @@ def test_swipe_fires_once_per_stroke():
     assert len(fired) == 1
 
 
+def test_swipe_survives_tracking_dropouts():
+    """Motion blur makes MediaPipe lose the hand for a frame or two mid-swipe."""
+    e = GestureEngine()
+    frames = _move(0, 0.5, (0.2, 0.5), (0.7, 0.5))
+    for i in (3, 4):                      # two lost frames in the middle
+        frames[i] = frame(frames[i].t, hand=False)
+    assert [g for _, g in run(e, frames, {"Swipe_Right"})] == ["Swipe_Right"]
+
+
+def test_swipe_with_half_curled_fingers_mid_motion():
+    e = GestureEngine()
+    frames = _move(0, 0.5, (0.2, 0.5), (0.7, 0.5))
+    for i in range(1, len(frames), 3):    # every third frame looks like a fist
+        frames[i].extended = FIST
+    assert [g for _, g in run(e, frames, {"Swipe_Right"})] == ["Swipe_Right"]
+
+
+def test_curved_swipe_counts():
+    e = GestureEngine()
+    ts = steps(0, 0.5)
+    frames = [frame(t, center=(0.2 + 0.5 * i / (len(ts) - 1),
+                               0.5 - 0.12 * math.sin(math.pi * i / (len(ts) - 1))))
+              for i, t in enumerate(ts)]
+    assert [g for _, g in run(e, frames, {"Swipe_Right", "Swipe_Up"})] == ["Swipe_Right"]
+
+
+def test_long_absence_resets_swipe():
+    e = GestureEngine()
+    frames = _move(0, 0.3, (0.2, 0.5), (0.4, 0.5)) + \
+             [frame(t, hand=False) for t in steps(0.3, 1.0)] + \
+             _move(1.0, 1.2, (0.5, 0.5), (0.55, 0.5))
+    assert run(e, frames, {"Swipe_Right"}) == []
+
+
 def test_wave_detected():
     e = GestureEngine()
     frames = []

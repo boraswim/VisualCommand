@@ -27,7 +27,7 @@ HAND_CONNECTIONS = (
 )
 
 
-@dataclass
+@dataclass(eq=False)   # identity equality: generated __eq__ would compare numpy arrays and raise
 class FrameFeatures:
     t: float                                  # seconds (monotonic)
     hand: bool = False
@@ -76,19 +76,52 @@ def finger_states(pts: np.ndarray) -> tuple[bool, bool, bool, bool, bool]:
     return tuple(states)  # type: ignore[return-value]
 
 
-def build_features(t: float, result, aspect: float, lighting: str) -> FrameFeatures:
-    """Turn a MediaPipe GestureRecognizerResult into FrameFeatures."""
-    f = FrameFeatures(t=t, lighting=lighting)
+def _top(categories_per_hand, i):
+    if categories_per_hand and len(categories_per_hand) > i and categories_per_hand[i]:
+        return categories_per_hand[i][0]
+    return None
+
+
+def build_hands(t: float, result, aspect: float, lighting: str) -> list[FrameFeatures]:
+    """One FrameFeatures per hand in a MediaPipe GestureRecognizerResult (0, 1 or 2)."""
+    hands = []
     if result is None or not result.hand_landmarks:
-        return f
-    lm = result.hand_landmarks[0]
-    norm = np.array([[p.x, p.y] for p in lm], dtype=np.float32)
-    return features_from_landmarks(
-        t, norm, aspect, lighting,
-        mp_label=(result.gestures[0][0].category_name if result.gestures and result.gestures[0] else "None"),
-        mp_score=(result.gestures[0][0].score if result.gestures and result.gestures[0] else 0.0),
-        handedness=(result.handedness[0][0].category_name if result.handedness and result.handedness[0] else ""),
-    )
+        return hands
+    for i, lm in enumerate(result.hand_landmarks):
+        norm = np.array([[p.x, p.y] for p in lm], dtype=np.float32)
+        g, h = _top(result.gestures, i), _top(result.handedness, i)
+        f = features_from_landmarks(
+            t, norm, aspect, lighting,
+            mp_label=g.category_name if g else "None",
+            mp_score=g.score if g else 0.0,
+            handedness=h.category_name if h else "",
+        )
+        f.extra["handedness_score"] = float(h.score) if h else 0.0
+        hands.append(f)
+    return hands
+
+
+def plausible_hand(f: FrameFeatures) -> bool:
+    """Reject detections that can't be a real hand in front of a webcam.
+
+    Shadows and folds in clothing sometimes get picked up as tiny or huge "hands",
+    or as hands whose landmarks collapse onto each other.
+    """
+    if not f.hand or f.landmarks is None:
+        return False
+    if not 0.04 <= f.palm_size <= 0.8:            # too small / too big for a hand
+        return False
+    lm = f.landmarks
+    span = float(np.ptp(lm[:, 0]) + np.ptp(lm[:, 1]))
+    if span < 0.06:                               # landmarks collapsed into a blob
+        return False
+    return True
+
+
+def build_features(t: float, result, aspect: float, lighting: str) -> FrameFeatures:
+    """First hand only (kept for simple callers and tests)."""
+    hands = build_hands(t, result, aspect, lighting)
+    return hands[0] if hands else FrameFeatures(t=t, lighting=lighting)
 
 
 def features_from_landmarks(t: float, norm: np.ndarray, aspect: float, lighting: str = "good",

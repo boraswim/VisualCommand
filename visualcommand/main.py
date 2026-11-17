@@ -60,6 +60,7 @@ class App:
         self.root = tk.Tk()
         self.root.withdraw()
         self.ui = None
+        self.toast = None
         self.tracker = Tracker(self)
         self.tray = Tray(self)
 
@@ -92,9 +93,34 @@ class App:
     def show_window(self) -> None:
         self.post(lambda: self._ui().show())
 
-    def notify(self, message: str) -> None:
-        if self.cfg.get("notifications", True):
-            self.tray.notify(message)
+    def notify(self, message: str, title: str = APP_NAME, error: bool = False) -> None:
+        """Show the app's own popup (replaces any popup already showing).
+
+        Errors are always shown; action confirmations only if enabled in settings.
+        """
+        if not error and not self.cfg.get("notifications", True):
+            return
+
+        def show():
+            if self.toast is None:
+                from visualcommand.toast import Toast
+                self.toast = Toast(self.root)
+            self.toast.show(title, message, "error" if error else "info")
+        self.post(show)
+
+    def hide_popups(self, timeout: float = 0.5) -> None:
+        """Remove our popup before something captures the screen (call from any non-Tk thread)."""
+        if self.toast is None:
+            return
+        done = threading.Event()
+
+        def close():
+            self.toast._close_now()
+            self.root.update_idletasks()
+            done.set()
+        self.post(close)
+        done.wait(timeout)
+        time.sleep(0.05)   # let the compositor drop the window
 
     def on_tracker_status(self) -> None:
         self.tray.refresh()
@@ -113,14 +139,15 @@ class App:
     def _run_action(self, gesture_id: str, action_id: str, params: dict | None) -> None:
         g = gestures.registry().get(gesture_id)
         label = f"{g.icon} {g.name}" if g else "Test"
+        failed = False
         try:
             msg = actions.run_action(action_id, params, self)
         except Exception as exc:
             log.exception("Action %s failed", action_id)
-            msg = f"{action_id} failed: {exc}"
+            msg, failed = f"Couldn't run {action_id}: {exc}", True
         self.last_event = f"{label} → {msg or action_id}  ({datetime.now():%H:%M:%S})"
         if msg and action_id != "lock_pc":
-            self.notify(f"{label}: {msg}")
+            self.notify(msg, title=label, error=failed)
         self.post(self._refresh_ui)
 
     def set_tracking(self, on: bool) -> None:
