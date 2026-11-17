@@ -24,6 +24,10 @@ from visualcommand.winutil import session_locked
 
 log = logging.getLogger(__name__)
 
+LOCK_CHECK_RUNNING = 1.0   # s between lock checks while the camera is on
+LOCK_CHECK_LOCKED = 0.5    # s between checks while locked: how fast an unlock is noticed
+START_SUPPRESS = 0.6       # s after the camera starts during which nothing fires
+
 PREVIEW_WINDOW = "VisualCommand preview (not recorded)"
 ACTIVE_HOLD = 2.0       # stay in active mode this long after the hand disappears
 # One analysis size for idle and active: MediaPipe resizes to its own small model
@@ -165,15 +169,17 @@ class Tracker(threading.Thread):
 
     def _open(self) -> bool:
         index = int(self.cfg.get("camera_index", 0))
-        cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
+        t0 = time.perf_counter()
+        # Pass the frame size when opening. Setting properties afterwards restarts the
+        # DirectShow graph each time (measured: ~1.35 s per change, 3.9 s total vs
+        # 1.05 s this way), which made the camera slow to come back after unlocking.
+        cap = cv2.VideoCapture(index, cv2.CAP_DSHOW, [
+            cv2.CAP_PROP_FRAME_WIDTH, 640,
+            cv2.CAP_PROP_FRAME_HEIGHT, 480,
+        ])
         if not cap.isOpened():
             cap.release()
             return False
-        # Ask the camera for small MJPG frames so it, not us, does the scaling.
-        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         ok = False
         for _ in range(10):  # some cameras need a few frames to wake up
             ok = cap.grab()
@@ -184,6 +190,7 @@ class Tracker(threading.Thread):
             cap.release()
             return False
         self._cap, self._cap_index = cap, index
+        log.info("Camera %d open in %.2f s", index, time.perf_counter() - t0)
         return True
 
     def _close(self) -> None:
@@ -265,11 +272,13 @@ class Tracker(threading.Thread):
                 self._wait(min(5.0, self.app.paused_until - time.time()))
                 continue
             if now >= next_lock_check:
-                next_lock_check = now + 2.0
+                next_lock_check = now + LOCK_CHECK_RUNNING
                 if session_locked():
                     self._close()
                     self._set_status(LOCKED)
-                    self._wait(2.0)
+                    # Notice the unlock quickly; the check is a cheap Windows call.
+                    self._wait(LOCK_CHECK_LOCKED)
+                    next_lock_check = 0.0
                     continue
             if self._cap is not None and self._cap_index != int(self.cfg.get("camera_index", 0)):
                 self._close()   # camera changed in settings
@@ -286,8 +295,8 @@ class Tracker(threading.Thread):
                     continue
                 self._busy_notified = False
                 self._ensure_recognizer()
-                # Nothing fires in the first second (e.g. a hand still up right after unlocking).
-                self._hands.suppress(time.monotonic(), 1.0)
+                # Nothing fires right away (e.g. a hand still up right after unlocking).
+                self._hands.suppress(time.monotonic(), START_SUPPRESS)
                 self._set_status(RUNNING)
                 next_due = 0.0
 
