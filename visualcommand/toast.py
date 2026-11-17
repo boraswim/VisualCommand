@@ -70,16 +70,32 @@ class Toast:
         return self._confirm is not None
 
     # --- public -------------------------------------------------------------------
-    def show(self, title: str, message: str = "", kind: str = "info") -> bool:
-        """Short message. Returns False (not shown) while a confirmation is open."""
+    def show(self, title: str, message: str = "", kind: str = "info",
+             on_click: Callable[[], None] | None = None, click_hint: str = "") -> bool:
+        """Short message. Returns False (not shown) while a confirmation is open.
+
+        Clicking closes it; with `on_click` it also runs that (e.g. open a folder),
+        and `click_hint` is shown as a small line telling the user so.
+        """
         if self.confirming:
             return False
         win, card, text = self._frame(title, kind)
         if message:
             tk.Label(text, text=message, bg=BG, fg=TEXT_FG, font=("Segoe UI", 9),
                      anchor="w", justify="left", wraplength=WIDTH - 80).pack(fill="x", pady=(2, 0))
+        if on_click and click_hint:
+            tk.Label(text, text=click_hint, bg=BG, fg=ACCENT["info"], font=("Segoe UI", 8),
+                     anchor="w").pack(fill="x", pady=(3, 0))
+
+        def clicked(_e=None):
+            self._close_now()
+            if on_click:
+                on_click()
+
         for w in (win, card, text, *card.winfo_children(), *text.winfo_children()):
-            w.bind("<Button-1>", lambda _e: self._close_now())
+            w.bind("<Button-1>", clicked)
+            if on_click:
+                w.configure(cursor="hand2")
         self._present(win)
         self._jobs.append(self.root.after(SHOW_MS, lambda: self._fade(win, FADE_STEPS, -1)))
         return True

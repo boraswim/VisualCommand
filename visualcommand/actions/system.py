@@ -5,14 +5,33 @@ import ctypes
 import os
 import subprocess
 from datetime import datetime
+from pathlib import Path
 
-from visualcommand.actions.base import Param, register_action
+from visualcommand.actions.base import ActionResult, Param, register_action
 from visualcommand.actions.keys import press
 from visualcommand.paths import screenshots_dir
 
 
+def primary_monitor(monitors: list[dict]) -> dict:
+    """The main display from mss's monitor list.
+
+    monitors[0] is the whole virtual desktop (all screens); the rest are single
+    displays. Prefer the one mss marks as primary; otherwise the one at (0, 0),
+    which is where Windows always puts the primary display.
+    """
+    screens = monitors[1:] or monitors
+    for m in screens:
+        if m.get("is_primary"):
+            return m
+    for m in screens:
+        if m.get("left") == 0 and m.get("top") == 0:
+            return m
+    return screens[0]
+
+
 @register_action("screenshot", "Take screenshot",
-                 "Saves all monitors as a PNG in Pictures\\VisualCommand.", "System", order=10)
+                 "Saves your main display as a PNG in Pictures\\VisualCommand.", "System",
+                 order=10)
 def screenshot(ctx, params):
     import mss
     import mss.tools
@@ -20,10 +39,22 @@ def screenshot(ctx, params):
     if hasattr(ctx, "hide_popups"):
         ctx.hide_popups()          # don't capture our own previous popup
     path = screenshots_dir() / f"Screenshot_{datetime.now():%Y-%m-%d_%H-%M-%S}.png"
-    with mss.mss() as sct:
-        shot = sct.grab(sct.monitors[0])   # monitor 0 = the whole virtual desktop
+    open_mss = getattr(mss, "MSS", None) or mss.mss   # mss.mss is deprecated in newer mss
+    with open_mss() as sct:
+        shot = sct.grab(primary_monitor(sct.monitors))
         mss.tools.to_png(shot.rgb, shot.size, output=str(path))
-    return f"Screenshot saved: {path.name}"
+    # Clicking the popup opens the folder with this screenshot selected.
+    return ActionResult(f"Screenshot saved: {path.name}", reveal=path)
+
+
+def reveal_in_explorer(path) -> None:
+    """Open the folder containing `path` with the file selected (folder only if the
+    file is gone)."""
+    path = Path(path)
+    if path.exists():
+        subprocess.Popen(["explorer", f"/select,{path}"])
+    elif path.parent.exists():
+        os.startfile(path.parent)
 
 
 @register_action("lock_pc", "Lock PC", "Locks Windows (same as Win+L).", "System", order=11)

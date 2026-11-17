@@ -7,6 +7,7 @@ the notification. `ctx` is the running App (gives access to pause_tracking etc.)
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Callable
 
 NONE_ID = "none"
@@ -31,6 +32,17 @@ class ActionSpec:
     # > 0: the action waits for confirmation. A popup counts down this many seconds
     # with Execute / Cancel buttons and runs the action when the countdown ends.
     confirm_seconds: int = 0
+
+
+@dataclass(frozen=True)
+class ActionResult:
+    """What an action may return instead of a plain message string.
+
+    reveal: a file to show in Explorer (folder opened, file selected) when the
+    popup is clicked, e.g. the screenshot just taken.
+    """
+    message: str
+    reveal: Path | None = None
 
 
 # Order of the categories in the action dropdown.

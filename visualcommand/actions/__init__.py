@@ -6,7 +6,7 @@ import logging
 import pkgutil
 
 from visualcommand.actions.base import (  # noqa: F401  (re-exported)
-    GROUP_ORDER, NONE_ID, ActionSpec, Param, register_action, registry,
+    GROUP_ORDER, NONE_ID, ActionResult, ActionSpec, Param, register_action, registry,
 )
 
 log = logging.getLogger(__name__)
@@ -38,12 +38,21 @@ def catalogue() -> list[ActionSpec]:
     return sorted(registry().values(), key=lambda a: (_group_rank(a.group), a.order, a.name))
 
 
-def run_action(action_id: str, params: dict | None, ctx) -> str | None:
-    """Run an action by id. Returns a message for the notification, or None."""
+def run_action_result(action_id: str, params: dict | None, ctx) -> ActionResult | None:
+    """Run an action by id. Returns its message (and optional click target), or None
+    for an unknown action."""
     load_all()
     spec = registry().get(action_id)
     if spec is None:
         log.warning("Unknown action %s", action_id)
         return None
     result = spec.func(ctx, params or {})
-    return result if isinstance(result, str) else spec.name
+    if isinstance(result, ActionResult):
+        return result
+    return ActionResult(result if isinstance(result, str) else spec.name)
+
+
+def run_action(action_id: str, params: dict | None, ctx) -> str | None:
+    """Run an action by id. Returns a message for the notification, or None."""
+    result = run_action_result(action_id, params, ctx)
+    return result.message if result else None

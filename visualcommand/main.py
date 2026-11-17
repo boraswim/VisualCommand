@@ -93,16 +93,25 @@ class App:
     def show_window(self) -> None:
         self.post(lambda: self._ui().show())
 
-    def notify(self, message: str, title: str = APP_NAME, error: bool = False) -> None:
+    def notify(self, message: str, title: str = APP_NAME, error: bool = False,
+               reveal=None) -> None:
         """Show the app's own popup (replaces any popup already showing).
 
         Errors are always shown; action confirmations only if enabled in settings.
+        With `reveal` (a file path), clicking the popup opens its folder with the
+        file selected.
         """
         if not error and not self.cfg.get("notifications", True):
             return
+        on_click = None
+        if reveal is not None:
+            from visualcommand.actions.system import reveal_in_explorer
+            on_click = lambda: reveal_in_explorer(reveal)  # noqa: E731
 
         def show():
-            self._toast().show(title, message, "error" if error else "info")
+            self._toast().show(title, message, "error" if error else "info",
+                               on_click=on_click,
+                               click_hint="Click to open the folder" if on_click else "")
         self.post(show)
 
     def _toast(self):
@@ -191,8 +200,11 @@ class App:
                     feedback: bool = True) -> None:
         label = self._label(gesture_id)
         failed = False
+        reveal = None
         try:
-            msg = actions.run_action(action_id, params, self)
+            result = actions.run_action_result(action_id, params, self)
+            msg = result.message if result else None
+            reveal = result.reveal if result else None
         except Exception as exc:
             log.exception("Action %s failed", action_id)
             msg, failed = f"Couldn't run {action_id}: {exc}", True
@@ -208,7 +220,7 @@ class App:
         if sound_name:
             sound.play(sound_name)
         if popup:
-            self.notify(msg, title=label, error=failed)
+            self.notify(msg, title=label, error=failed, reveal=reveal)
         self.post(self._refresh_ui)
 
     def set_tracking(self, on: bool) -> None:
