@@ -51,6 +51,39 @@ def thumb_up_shape(f: FrameFeatures) -> bool:
             and f.thumb_angle <= c["max_angle"])
 
 
+# Peace sign with the back of the hand to the camera: MediaPipe's label is missing
+# 91-100% of the time, but the hand shape is clear. Measured (back of hand, both
+# hands): index+middle out 96-98%, tip gap 0.55-0.71, V 14-21 deg, ring/pinky curl
+# 0.16-0.28, |palm facing| 0.91-0.97, tilt 25-30 deg. Everyday hands that also read
+# as two fingers out were narrower, edge-on (|facing| 0.17-0.40) or looser (0.30-0.37).
+VICTORY_SHAPE = {
+    "min_gap": 0.45,
+    "min_v_angle": 10.0,
+    "min_straight": 0.93,
+    "max_ring_pinky": 0.32,
+    "min_flat": 0.7,         # |palm facing|: palm OR back toward the camera, not edge-on
+    "max_tilt": 40.0,
+}
+VICTORY_SHAPE_SCORE = 0.8
+
+
+def victory_shape(f: FrameFeatures) -> bool:
+    c = VICTORY_SHAPE
+    return (f.extended == (False, True, True, False, False)
+            and f.v_gap >= c["min_gap"]
+            and f.v_angle >= c["min_v_angle"]
+            and f.straightness_index_middle >= c["min_straight"]
+            and f.ring_pinky_curl <= c["max_ring_pinky"]
+            and abs(f.palm_facing) >= c["min_flat"]
+            and f.tilt <= c["max_tilt"])
+
+
+# Shape-only fallbacks: poses MediaPipe often misses, recognised from the hand
+# outline instead (score returned when MediaPipe's label is absent).
+SHAPE_FALLBACKS: dict[str, tuple[Callable[[FrameFeatures], bool], float]] = {
+    "Victory": (victory_shape, VICTORY_SHAPE_SCORE),
+}
+
 # Extra shape checks on top of MediaPipe's label, per pose.
 SHAPE_CHECKS: dict[str, Callable[[FrameFeatures], bool]] = {
     "Open_Palm": open_palm_shape,
@@ -65,7 +98,8 @@ _BUILTIN = [
     ("Closed_Fist", "Fist", "✊", "All fingers curled into a fist."),
     ("Open_Palm", "Open palm", "✋",
      "Hand upright, all five fingers straight and spread, palm facing the camera."),
-    ("Victory", "Peace sign", "✌️", "Index and middle finger up in a V."),
+    ("Victory", "Peace sign", "✌️",
+     "Index and middle finger up in a V. Palm or back of the hand toward the camera."),
     ("Pointing_Up", "Point up", "☝️", "Only the index finger, pointing up."),
     ("ILoveYou", "I love you", "🤟", "Thumb, index and pinky out."),
 ]
@@ -73,9 +107,14 @@ _BUILTIN = [
 
 def _make(label: str, name: str, icon: str, description: str, order: int) -> type[PoseGesture]:
     check = SHAPE_CHECKS.get(label)
+    fallback = SHAPE_FALLBACKS.get(label)
 
     def score(self, f: FrameFeatures) -> float:
-        if not f.hand or f.mp_label != label:
+        if not f.hand:
+            return 0.0
+        if f.mp_label != label:
+            if fallback is not None and fallback[0](f):
+                return fallback[1]
             return 0.0
         if check is not None and not check(f):
             return 0.0

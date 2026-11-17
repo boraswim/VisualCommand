@@ -46,6 +46,7 @@ class FrameFeatures:
     index_dir: tuple[float, float] = (0.0, 0.0)  # unit vector index MCP -> tip
     # Hand shape (all relative to palm_size where a distance):
     straightness: float = 1.0     # least-straight of the 4 fingers (1 = perfectly straight)
+    straightness_index_middle: float = 1.0  # least-straight of index and middle only
     spread: float = 1.0           # index tip to pinky tip
     palm_width: float = 0.7       # index base to pinky base; shrinks as the hand turns sideways
     tilt: float = 0.0             # degrees the hand leans from upright (0 = fingers straight up)
@@ -53,6 +54,9 @@ class FrameFeatures:
     thumb_lift: float = 0.0       # how far the thumb tip is above the index knuckle
     thumb_angle: float = 0.0      # degrees the thumb (MCP->tip) leans from straight up
     fist_tightness: float = 1.0   # largest fingertip-to-own-knuckle distance (small = tight fist)
+    v_gap: float = 0.0            # index tip to middle tip (the opening of a V)
+    v_angle: float = 0.0          # degrees between the index and middle fingers
+    ring_pinky_curl: float = 1.0  # ring/pinky tip to own knuckle, larger of the two (small = curled)
     # +1 palm straight at the camera, -1 back of the hand, ~0 edge-on. Needs MediaPipe's
     # depth values and handedness; 1.0 when unknown.
     palm_facing: float = 1.0
@@ -210,6 +214,8 @@ def features_from_landmarks(t: float, norm: np.ndarray, aspect: float, lighting:
     up = pts[9] - pts[WRIST]
     tv, iv = pts[4] - pts[2], pts[8] - pts[5]
     cos = float(np.dot(tv, iv) / ((np.linalg.norm(tv) * np.linalg.norm(iv)) or 1e-9))
+    mv = pts[12] - pts[9]
+    cos_v = float(np.dot(iv, mv) / ((np.linalg.norm(iv) * np.linalg.norm(mv)) or 1e-9))
     return FrameFeatures(
         t=t, hand=True, landmarks=norm, handedness=handedness,
         mp_label=mp_label or "None", mp_score=float(mp_score),
@@ -221,6 +227,7 @@ def features_from_landmarks(t: float, norm: np.ndarray, aspect: float, lighting:
         index_tip=(float(norm[8][0]), float(norm[8][1])),
         index_dir=(float(d[0] / n), float(d[1] / n)),
         straightness=float(min(straight)),
+        straightness_index_middle=float(min(straight[:2])),
         spread=_dist(pts[8], pts[20]) / palm,
         palm_width=_dist(pts[5], pts[17]) / palm,
         tilt=float(np.degrees(np.arctan2(abs(up[0]), -up[1]))),
@@ -228,5 +235,8 @@ def features_from_landmarks(t: float, norm: np.ndarray, aspect: float, lighting:
         thumb_lift=float((pts[5][1] - pts[4][1]) / palm),
         thumb_angle=float(np.degrees(np.arctan2(abs(tv[0]), -tv[1]))),
         fist_tightness=max(_dist(pts[tip], pts[mcp]) for mcp, _p, _d, tip in FINGERS.values()) / palm,
+        v_gap=_dist(pts[8], pts[12]) / palm,
+        v_angle=float(np.degrees(np.arccos(np.clip(cos_v, -1.0, 1.0)))),
+        ring_pinky_curl=max(_dist(pts[16], pts[13]), _dist(pts[20], pts[17])) / palm,
         lighting=lighting,
     )

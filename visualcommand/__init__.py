@@ -1,4 +1,4 @@
 """VisualCommand: local webcam hand-gesture shortcuts for Windows."""
 
-__version__ = "0.1.11"
+__version__ = "0.1.12"
 APP_NAME = "VisualCommand"

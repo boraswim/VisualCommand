@@ -48,6 +48,18 @@ def plan_for(pose: str) -> list[tuple[str, str, float, float]]:
                                          "(thumb tucked in, not a finger gun)", 1.4, 2.6))
         steps.append(_natural("finger gun", 30.0))
         return steps
+    if pose == "Victory":
+        steps = []
+        for hand in ("right", "left"):
+            for face in ("palm side", "back of hand"):
+                for rep in (1, 2):
+                    steps.append((f"Victory:{hand}:{face}",
+                                  f"{hand.upper()} hand: PEACE SIGN ✌ (V shape)\n"
+                                  f"{face} toward the camera", 1.3, 2.5))
+        steps.append(("together", "Index + middle finger up but TOGETHER (no V gap),\n"
+                                  "any hand, either side", 1.3, 3.0))
+        steps.append(_natural("peace sign", 25.0))
+        return steps
     text = POSE_TEXT.get(pose, pose)
     steps = []
     for side in ("right", "left", "right", "left"):
