@@ -111,9 +111,12 @@ class TriggerLog:
                 "settings": settings,
                 "frames": [frame_record(f, t_trigger) for f in frames],
             }
-            name = f"trigger_{now:%Y%m%d_%H%M%S_%f}"[:-3] + f"_{gesture_id}.json"
-            path = self.folder / name
+            stem = f"trigger_{now:%Y%m%d_%H%M%S_%f}"[:-3] + f"_{gesture_id}"
             with self._lock:
+                path, n = self.folder / f"{stem}.json", 1
+                while path.exists():                  # same millisecond: never overwrite
+                    n += 1
+                    path = self.folder / f"{stem}_{n}.json"
                 path.write_text(json.dumps(data, separators=(",", ":")), encoding="utf-8")
             self.purge()
             return path

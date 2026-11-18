@@ -32,8 +32,28 @@ def _natural(what: str, seconds: float) -> tuple[str, str, float, float]:
                        f"Anything EXCEPT a deliberate {what}", 2.0, seconds)
 
 
+def _mapped_gestures() -> list:
+    import json
+    import os
+    from visualcommand.gestures import catalogue
+    cfg = os.path.join(os.environ.get("APPDATA", ""), "VisualCommand", "config.json")
+    mapped = set(json.load(open(cfg, encoding="utf-8")).get("mappings", {}))
+    return [g for g in catalogue() if g.id in mapped]
+
+
 def plan_for(pose: str) -> list[tuple[str, str, float, float]]:
     """(label, text, ready seconds, act seconds)"""
+    if pose == "Mapped":
+        # Every gesture the user has mapped, once per hand, made naturally.
+        steps = []
+        for g in _mapped_gestures():
+            for hand in ("right", "left"):
+                steps.append((f"{g.id}:{hand}", f"{hand.upper()} hand: {g.name.upper()} {g.icon}\n"
+                                                f"{g.description}", 1.4, 2.4))
+        steps.append(("natural", "Hands DOWN now: rest them on the desk, type, use the mouse,\n"
+                                 "hold your phone or a cup, lean on your hand...\n"
+                                 "NO deliberate gestures", 2.0, 25.0))
+        return steps
     if pose == "Point":
         steps = []
         for hand in ("right", "left"):

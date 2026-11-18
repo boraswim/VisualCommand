@@ -379,6 +379,11 @@ class Tracker(threading.Thread):
         # Shown like a mirror, matching the hand positions (which are in your view).
         view = cv2.flip(img, 1)
         h, w = view.shape[:2]
+        # Gesture zone: hands must be raised above this line to count.
+        zone_y = int(float(self.cfg.sensitivity().get("gesture_zone", 0.6)) * h)
+        cv2.line(view, (0, zone_y), (w, zone_y), (0, 200, 255), 1, cv2.LINE_AA)
+        cv2.putText(view, "gesture zone", (w - 110, zone_y - 6), cv2.FONT_HERSHEY_SIMPLEX, 0.4,
+                    (0, 200, 255), 1, cv2.LINE_AA)
         colours = [(90, 220, 120), (240, 170, 60)]          # hand 1 green, hand 2 blue
         for f, colour in [(r, (60, 60, 230)) for r in rejected] + list(zip(
                 [s.current for s in self._hands.slots], colours)):
@@ -400,6 +405,8 @@ class Tracker(threading.Thread):
             fingers = "".join("1" if e else "0" for e in f.extended)
             lines.append(f"Hand {i}: {f.mp_label} {f.mp_score:.2f} | mapped {pose or '-'} "
                          f"{score:.2f} | fingers {fingers}")
+            if s.engine.last_problem:
+                lines.append(f"   not counted: {s.engine.last_problem}")
             if f.mp_label == "Thumb_Up":
                 lines.append(f"   thumb: lift {f.thumb_lift:.2f} fist {f.fist_tightness:.2f} "
                              f"angle {f.thumb_angle:.0f}")

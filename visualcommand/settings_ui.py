@@ -431,7 +431,8 @@ class SettingsWindow:
 
             ttk.Scale(f, from_=lo, to=hi, variable=var, command=changed).grid(
                 row=row, column=1, sticky="ew", padx=10, pady=(8, 0))
-            ttk.Label(f, text=help_text, style="Desc.TLabel").grid(row=row + 1, column=1, sticky="w")
+            ttk.Label(f, text=help_text, style="Desc.TLabel", wraplength=540).grid(
+                row=row + 1, column=1, sticky="w")
             changed()
             self._scales.append((var, key, top, changed))
 
@@ -444,10 +445,13 @@ class SettingsWindow:
                "Minimum time before the same gesture can fire again.")
         slider(6, "Pose confidence", "min_score", 0.4, 0.95, "{:.2f}",
                "Higher = fewer accidental triggers, but poses must be clearer.")
-        ttk.Separator(f).grid(row=8, column=0, columnspan=3, sticky="ew", pady=12)
-        slider(9, "Idle checks / second", "idle_fps", 1, 10, "{:.0f}",
+        slider(8, "Gesture zone", "gesture_zone", 0.35, 0.9, "top {:.0%}",
+               "Hand must be raised into this top part of the view. Bigger if real gestures "
+               "are missed, smaller if a resting hand triggers.")
+        ttk.Separator(f).grid(row=10, column=0, columnspan=3, sticky="ew", pady=12)
+        slider(11, "Idle checks / second", "idle_fps", 1, 10, "{:.0f}",
                "When no hand is visible. Lower uses less CPU but reacts later.", top=True)
-        slider(11, "Tracking frames / second", "active_fps", 5, 30, "{:.0f}",
+        slider(13, "Tracking frames / second", "active_fps", 5, 30, "{:.0f}",
                "While a hand is visible. Higher reacts faster but uses more CPU.", top=True)
 
         def reset():
@@ -456,7 +460,7 @@ class SettingsWindow:
                 changed()   # Scale doesn't call its command for programmatic changes
 
         ttk.Button(f, text="Reset to defaults", command=reset).grid(
-            row=13, column=0, sticky="w", pady=16)
+            row=15, column=0, sticky="w", pady=16)
         return f
 
     def _save_later(self) -> None:

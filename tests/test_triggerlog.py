@@ -46,6 +46,12 @@ def test_record_contains_no_image_data(tmp_path):
         assert word not in text.lower()
 
 
+def test_two_records_in_the_same_instant_both_kept(tmp_path):
+    log = TriggerLog(tmp_path)
+    paths = {log.record("Rock", "screenshot", [_hand(1.0)], {}) for _ in range(5)}
+    assert len(paths) == 5 and all(p.exists() for p in paths)
+
+
 def test_outcome_is_added_later(tmp_path):
     log = TriggerLog(tmp_path)
     p = log.record("Call_Me", "shutdown", [_hand(1.0)], {})

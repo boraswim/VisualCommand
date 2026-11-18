@@ -45,6 +45,9 @@ DEFAULTS: dict[str, Any] = {
         # recognised pose are often only 0.6-0.75; the hold time (same pose for
         # hold_time seconds) is what guards against accidental triggers.
         "min_score": 0.55,
+        # Gestures only count with the middle of the hand above this fraction of the
+        # view height (0 = top): a resting hand near the desk can't trigger anything.
+        "gesture_zone": 0.60,
     },
     # gesture id -> {"action": action id, "params": {...}}
     "mappings": {
