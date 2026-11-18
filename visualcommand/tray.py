@@ -33,6 +33,7 @@ class Tray:
             Item(lambda _: "Resume tracking" if app.is_paused() else "Pause for 10 minutes",
                  lambda: app.pause(0 if app.is_paused() else 10)),
             Item("Open screenshots folder", lambda: os.startfile(screenshots_dir())),
+            Item("Open trigger logs", lambda: app.open_trigger_logs()),
             Menu.SEPARATOR,
             Item("Quit", lambda: app.quit()),
         )

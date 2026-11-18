@@ -361,8 +361,8 @@ class Tracker(threading.Thread):
         events = self._hands.process(
             now, hands, light, set(mappings), self.cfg.sensitivity(),
             arm_id=self.cfg.get("arm_gesture", ""), arm_window=float(self.cfg.get("arm_window", 5.0)))
-        for gid in events:
-            self.app.on_gesture(gid)
+        for gid, frames in self._hands.last_triggers:
+            self.app.on_gesture(gid, frames)
 
         st = self.stats
         st["frames"] += 1

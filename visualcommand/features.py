@@ -129,6 +129,7 @@ def build_hands(t: float, result, aspect: float, lighting: str,
             handedness=side,
         )
         f.palm_facing = palm_facing(raw, aspect, side)
+        f.extra["z"] = raw[:, 2].copy()          # MediaPipe depth per landmark (for the trigger log)
         f.extra["handedness_score"] = float(h.score) if h else 0.0
         hands.append(f)
     return hands

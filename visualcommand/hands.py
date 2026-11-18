@@ -8,6 +8,7 @@ either hand is de-duplicated by a shared cooldown.
 from __future__ import annotations
 
 import math
+from collections import deque
 from dataclasses import dataclass, field
 
 from visualcommand.engine import ArmState, GestureEngine
@@ -15,6 +16,7 @@ from visualcommand.features import FrameFeatures
 
 MATCH_DISTANCE = 0.3   # max palm movement between frames to count as the same hand
 FORGET_AFTER = 0.5     # a slot is free again after its hand has been gone this long
+HISTORY_SECONDS = 1.5  # hand frames kept per slot for the trigger log
 
 
 @dataclass
@@ -23,6 +25,8 @@ class Slot:
     center: tuple[float, float] | None = None
     last_seen: float = -1e9
     current: FrameFeatures | None = field(default=None, repr=False)
+    # recent frames of this hand (numbers only), for the trigger log
+    history: deque = field(default_factory=deque, repr=False)
 
 
 class HandSlots:
@@ -30,6 +34,8 @@ class HandSlots:
         self.arm = ArmState()
         self.slots = [Slot(GestureEngine(self.arm)) for _ in range(n)]
         self._last_fire: dict[str, float] = {}
+        # (gesture id, frames of the hand that made it) for the last process() call
+        self.last_triggers: list[tuple[str, list[FrameFeatures]]] = []
 
     def _assign(self, t: float, hands: list[FrameFeatures]) -> list[FrameFeatures | None]:
         for s in self.slots:
@@ -59,18 +65,23 @@ class HandSlots:
     def process(self, t: float, hands: list[FrameFeatures], lighting: str, active_ids: set[str],
                 sens: dict, arm_id: str = "", arm_window: float = 5.0) -> list[str]:
         events: list[str] = []
+        self.last_triggers = []
         cooldown = sens.get("cooldown", 2.0)
         for slot, f in zip(self.slots, self._assign(t, hands)):
             if f is None:
                 f = FrameFeatures(t=t, lighting=lighting)
             else:
                 slot.center, slot.last_seen = f.palm_center, t
+                slot.history.append(f)
+            while slot.history and t - slot.history[0].t > HISTORY_SECONDS:
+                slot.history.popleft()
             slot.current = f
             for gid in slot.engine.process(f, active_ids, sens, arm_id, arm_window):
                 if t - self._last_fire.get(gid, -1e9) < cooldown:
                     continue        # the other hand just did the same thing
                 self._last_fire[gid] = t
                 events.append(gid)
+                self.last_triggers.append((gid, list(slot.history)))
         return events
 
     def suppress(self, t: float, seconds: float) -> None:

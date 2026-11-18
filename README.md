@@ -34,6 +34,8 @@ All gestures are hand poses: hold the pose for a moment (0.4 s by default) and t
 
 When a gesture runs an action you get a short sound and a small popup (bottom right); either can be turned off in the General tab. The **Test** buttons run the action silently and show the result in the window's status line.
 
+**Trigger log** (General tab, on by default): every time a gesture triggers an action, a small JSON file is written to `%APPDATA%\VisualCommand\trigger_logs`. It holds the gesture, the action (not its typed parameters), the outcome (ran / failed / executed / cancelled) and ~1.5 s of hand-tracking numbers for the hand that made it: 21 points with depth, MediaPipe's label and confidence, left/right, lighting, the rule measures and the detection settings. No images. Each record is deleted after 24 hours. Open it from the tray menu or the General tab. Nothing is sent; zip the folder and share it to help tune false triggers.
+
 Sounds: processed from Kenney's "Interface Sounds" (CC0, kenney.nl); `scripts/make_sounds.py` rebuilds them.
 
 Screenshots go to `Pictures\VisualCommand`. Settings and a small text log, which records only gesture names, are kept in `%APPDATA%\VisualCommand`.

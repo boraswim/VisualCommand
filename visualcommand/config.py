@@ -20,6 +20,9 @@ DEFAULTS: dict[str, Any] = {
     "hand_strictness": 0.7,
     "notifications": True,      # popup when a gesture runs an action
     "sounds": True,             # short sound when a gesture runs an action
+    # Keep a 24-hour log of triggered gestures (hand-tracking numbers only, no images)
+    # in %APPDATA%\VisualCommand\trigger_logs, for finding false triggers.
+    "trigger_log": True,
     "camera_index": 0,
     # Flip the camera picture before analysis. MediaPipe's hand model wants the
     # camera's natural (unmirrored) view, which most webcams deliver, so this is off;

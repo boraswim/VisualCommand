@@ -29,6 +29,7 @@ class _FakeApp:
     def test_action(self, a, p): pass
     def post(self, fn): fn()
     def notify(self, *a, **k): pass
+    def open_trigger_logs(self): pass
 
 
 def _sections(ui):

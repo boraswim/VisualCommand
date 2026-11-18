@@ -89,7 +89,7 @@ class _Fake:
                 fake.ran.append(args)
         self._executor = Ex()
 
-    def _request_confirm(self, gid, spec, params):
+    def _request_confirm(self, gid, spec, params, log_path=None):
         self.confirmed.append((gid, spec.id))
 
     def _run_action(self, *args):
@@ -133,4 +133,4 @@ def test_three_fingers_icon_is_not_the_vulcan_salute():
 def test_other_actions_run_directly():
     f = _Fake()
     App._dispatch(f, "Thumb_Up", "screenshot", {})
-    assert f.confirmed == [] and f.ran == [("Thumb_Up", "screenshot", {})]
+    assert f.confirmed == [] and f.ran == [("Thumb_Up", "screenshot", {}, True, None)]

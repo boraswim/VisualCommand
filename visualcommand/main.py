@@ -17,10 +17,13 @@ from visualcommand import actions, gestures, sound
 from visualcommand.config import Config
 from visualcommand.paths import app_data_dir
 from visualcommand.tracker import Tracker
+from visualcommand.triggerlog import TriggerLog
 from visualcommand.tray import Tray
 from visualcommand.winutil import SingleInstance, repair_autostart, set_dpi_aware
 
 log = logging.getLogger(APP_NAME)
+
+PURGE_EVERY_MS = 30 * 60 * 1000
 
 
 def _setup_logging(verbose: bool) -> None:
@@ -56,6 +59,7 @@ class App:
 
         gestures.load_all()
         actions.load_all()
+        self.trigger_log = TriggerLog(app_data_dir() / "trigger_logs")
 
         self.root = tk.Tk()
         self.root.withdraw()
@@ -139,29 +143,42 @@ class App:
         self.tray.refresh()
         self.post(self._refresh_ui)
 
-    def on_gesture(self, gesture_id: str) -> None:
+    def on_gesture(self, gesture_id: str, frames: list | None = None) -> None:
+        """A gesture fired. `frames`: recent tracking of the hand that made it."""
         mapping = self.cfg.mappings().get(gesture_id)
         if not mapping:
             return
-        log.info("Gesture %s -> %s", gesture_id, mapping.get("action"))
-        self._dispatch(gesture_id, mapping.get("action"), mapping.get("params"))
+        action_id = mapping.get("action")
+        log.info("Gesture %s -> %s", gesture_id, action_id)
+        log_path = None
+        if self.cfg.get("trigger_log", True):
+            log_path = self.trigger_log.record(gesture_id, action_id, frames or [],
+                                               self._detection_settings())
+        self._dispatch(gesture_id, action_id, mapping.get("params"), log_path=log_path)
+
+    def _detection_settings(self) -> dict:
+        """Settings that affect recognition, stored with each trigger record."""
+        return {"sensitivity": self.cfg.sensitivity(),
+                **{k: self.cfg.get(k) for k in ("hand_strictness", "mirror_image", "lighting_mode",
+                                                "idle_fps", "active_fps", "arm_gesture")}}
 
     def test_action(self, action_id: str, params: dict | None) -> None:
         self._dispatch("", action_id, params)
 
-    def _dispatch(self, gesture_id: str, action_id: str, params: dict | None) -> None:
+    def _dispatch(self, gesture_id: str, action_id: str, params: dict | None,
+                  log_path=None) -> None:
         spec = actions.registry().get(action_id)
         if spec is not None and spec.confirm_seconds > 0:
             # Power actions (and Test of them): ask first, with a countdown.
-            self._request_confirm(gesture_id, spec, params)
+            self._request_confirm(gesture_id, spec, params, log_path=log_path)
         else:
-            self._executor.submit(self._run_action, gesture_id, action_id, params)
+            self._executor.submit(self._run_action, gesture_id, action_id, params, True, log_path)
 
     def _label(self, gesture_id: str) -> str:
         g = gestures.registry().get(gesture_id)
         return f"{g.icon} {g.name}" if g else "Test"
 
-    def _request_confirm(self, gesture_id: str, spec, params: dict | None) -> None:
+    def _request_confirm(self, gesture_id: str, spec, params: dict | None, log_path=None) -> None:
         """Show the countdown popup; the action runs on Execute or when it ends.
 
         Always shown (even with popups turned off): this is the only way to stop it.
@@ -173,10 +190,13 @@ class App:
 
         def execute():
             log.info("Confirmed: %s", spec.id)
-            self._executor.submit(self._run_action, gesture_id, spec.id, params, False)
+            # Write the outcome first: the PC may be shutting down a moment later.
+            self.trigger_log.set_outcome(log_path, "executed")
+            self._executor.submit(self._run_action, gesture_id, spec.id, params, False, log_path)
 
         def cancel():
             log.info("Cancelled: %s", spec.id)
+            self.trigger_log.set_outcome(log_path, "cancelled")
             self.last_event = f"{label} → {spec.name} cancelled  ({datetime.now():%H:%M:%S})"
             self._refresh_ui()
 
@@ -197,7 +217,7 @@ class App:
         return popup, sound
 
     def _run_action(self, gesture_id: str, action_id: str, params: dict | None,
-                    feedback: bool = True) -> None:
+                    feedback: bool = True, log_path=None) -> None:
         label = self._label(gesture_id)
         failed = False
         reveal = None
@@ -208,6 +228,10 @@ class App:
         except Exception as exc:
             log.exception("Action %s failed", action_id)
             msg, failed = f"Couldn't run {action_id}: {exc}", True
+        if failed:
+            self.trigger_log.set_outcome(log_path, "failed", msg)
+        elif feedback:                      # confirmed power actions were marked "executed"
+            self.trigger_log.set_outcome(log_path, "ran")
         self.last_event = f"{label} → {msg or action_id}  ({datetime.now():%H:%M:%S})"
         if not feedback:                    # confirmed power action: the popup already said it
             if failed:
@@ -279,8 +303,21 @@ class App:
                      self.tracker.status, frames / 10, ms,
                      proc.cpu_percent(None) / psutil.cpu_count(), proc.memory_info().rss / 1e6, len(conns))
 
+    def open_trigger_logs(self) -> None:
+        import os
+        os.startfile(self.trigger_log.ensure_folder())
+
+    def _purge_trigger_logs(self) -> None:
+        """Delete trigger records older than 24 h; runs at start and every 30 min."""
+        removed = self.trigger_log.purge()
+        if removed:
+            log.info("Trigger log: removed %d record(s) older than 24 h", removed)
+        if not self._quitting:
+            self.root.after(PURGE_EVERY_MS, self._purge_trigger_logs)
+
     def run(self, instance: SingleInstance) -> None:
         repair_autostart()
+        self._purge_trigger_logs()
         self.tracker.start()
         self.tray.start()
         self.tray.refresh()

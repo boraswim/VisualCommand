@@ -43,9 +43,12 @@ PRIVACY_TEXT = (
     "makes no network connections.\n"
     "•  When tracking is off, paused or the PC is locked, the camera is released and its "
     "light goes off.\n"
-    "•  The only files written are your settings (config.json) and a small text log of "
-    "which gestures fired, both in %APPDATA%\\VisualCommand, plus the screenshots you ask "
-    "for in Pictures\\VisualCommand."
+    "•  The only files written are your settings (config.json), a small text log of "
+    "which gestures fired, and (if turned on in General) a trigger log, all in "
+    "%APPDATA%\\VisualCommand, plus the screenshots you ask for in Pictures\\VisualCommand.\n"
+    "•  The trigger log holds only hand-tracking numbers (21 hand points, scores, settings, "
+    "which action ran) for the moments a gesture fired, never images. Each record is "
+    "deleted after 24 hours and nothing is ever sent anywhere."
 )
 
 
@@ -381,6 +384,22 @@ class SettingsWindow:
         r += 1
         ttk.Label(f, text="If set, other gestures only work for a few seconds after you show this "
                           "one. Use it if gestures fire by accident.", style="Desc.TLabel"
+                  ).grid(row=r, column=1, columnspan=2, sticky="w")
+        r += 1
+
+        ttk.Separator(f).grid(row=r, column=0, columnspan=3, sticky="ew", pady=12)
+        r += 1
+        ttk.Label(f, text="Trigger log").grid(row=r, column=0, sticky="w", pady=4)
+        tlog = tk.BooleanVar(value=self.cfg.get("trigger_log", True))
+        ttk.Checkbutton(f, text="Keep a 24-hour log of triggered gestures", variable=tlog,
+                        command=lambda: self.cfg.set("trigger_log", tlog.get())
+                        ).grid(row=r, column=1, sticky="w")
+        ttk.Button(f, text="Open logs folder", command=self.app.open_trigger_logs
+                   ).grid(row=r, column=2, sticky="e")
+        r += 1
+        ttk.Label(f, text="Hand-tracking numbers only, never images. Each record is deleted after "
+                          "24 hours. Nothing is sent anywhere; you can share the folder to help "
+                          "tune false triggers.", style="Desc.TLabel", wraplength=520
                   ).grid(row=r, column=1, columnspan=2, sticky="w")
         return f
 
