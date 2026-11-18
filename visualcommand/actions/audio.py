@@ -1,4 +1,7 @@
-"""Microphone mute via the Windows Core Audio API (pycaw)."""
+"""Microphone mute via the Windows Core Audio API (pycaw).
+
+(Per-app volume is in app_volume.py; system volume keys in media.py.)
+"""
 from __future__ import annotations
 
 from visualcommand.actions.base import register_action

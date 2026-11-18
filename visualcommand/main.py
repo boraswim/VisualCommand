@@ -231,7 +231,7 @@ class App:
         if failed:
             self.trigger_log.set_outcome(log_path, "failed", msg)
         elif feedback:                      # confirmed power actions were marked "executed"
-            self.trigger_log.set_outcome(log_path, "ran")
+            self.trigger_log.set_outcome(log_path, "ran", msg or "")
         self.last_event = f"{label} → {msg or action_id}  ({datetime.now():%H:%M:%S})"
         if not feedback:                    # confirmed power action: the popup already said it
             if failed:

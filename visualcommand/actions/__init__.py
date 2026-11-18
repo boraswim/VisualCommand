@@ -11,7 +11,7 @@ from visualcommand.actions.base import (  # noqa: F401  (re-exported)
 
 log = logging.getLogger(__name__)
 
-_BUILTIN_MODULES = ("system", "media", "audio", "power")
+_BUILTIN_MODULES = ("system", "media", "app_volume", "audio", "power")
 _loaded = False
 
 
