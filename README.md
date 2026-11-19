@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/banner.png" alt="VisualCommand: hand-gesture shortcuts for Windows" width="760" />
+  <img src="docs/images/capsule.png" alt="VisualCommand" width="460" />
 </p>
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D6" alt="Windows 10 | 11" />

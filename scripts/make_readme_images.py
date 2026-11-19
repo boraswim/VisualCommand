@@ -12,7 +12,7 @@ import tempfile
 import tkinter as tk
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont, ImageGrab
+from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageGrab
 
 from visualcommand.config import Config
 from visualcommand.icon import make_icon
@@ -32,21 +32,62 @@ def font(name: str, size: int):
 
 # --- banner ---------------------------------------------------------------------------
 
-def banner() -> None:
-    w, h = 1280, 400
-    img = Image.new("RGB", (w, h), "#0f1a14")
+GRAD_FROM, GRAD_TO = (24, 138, 84), (12, 74, 88)          # emerald -> deep teal, diagonal
+SUBTITLE = ("Control your PC with hand", "gestures, fully local")
+
+
+def _gradient(w: int, h: int) -> Image.Image:
+    """Diagonal gradient from the top-left to the bottom-right corner."""
+    small = Image.new("RGB", (64, 64))
+    px = small.load()
+    for y in range(64):
+        for x in range(64):
+            t = (x + y) / 126
+            px[x, y] = tuple(round(a + (b - a) * t) for a, b in zip(GRAD_FROM, GRAD_TO))
+    return small.resize((w, h), Image.BICUBIC)
+
+
+def _card(w: int, h: int, icon_size: int, icon_x: int, text_x: int, title_px: int,
+          sub_px: int, radius: int = 0) -> Image.Image:
+    """App capsule in the Vocalworks layout: big icon with a soft shadow, bold name, 2-line tagline."""
+    img = _gradient(w, h).convert("RGBA")
+    icon = make_icon("on", icon_size)
+    iy = (h - icon_size) // 2
+    shadow = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    mask = icon.getchannel("A").point(lambda a: a * 0.45)
+    shadow.paste((5, 30, 25, 255), (icon_x, iy + icon_size // 22), mask)
+    img = Image.alpha_composite(img, shadow.filter(ImageFilter.GaussianBlur(icon_size // 18)))
+    img.alpha_composite(icon, (icon_x, iy))
+
     d = ImageDraw.Draw(img)
-    for y in range(h):                                    # soft green gradient
-        t = y / h
-        d.line([(0, y), (w, y)], fill=(int(15 + 10 * t), int(26 + 40 * t), int(20 + 18 * t)))
-    icon = make_icon("on", 200)
-    img.paste(icon, (110, (h - 200) // 2), icon)
-    d.text((360, 118), "VisualCommand", font=font("segoeuib.ttf", 84), fill="white")
-    d.text((364, 222), "Hand-gesture shortcuts for Windows", font=font("segoeui.ttf", 38),
-           fill="#c9f0d8")
-    d.text((364, 276), "Fully local  ·  no images kept  ·  lives in your tray",
-           font=font("segoeui.ttf", 28), fill="#8fbfa2")
-    img.save(OUT / "banner.png", optimize=True)
+    room = w - text_x - round(w * 0.045)
+    title_font = font("segoeuib.ttf", title_px)
+    while d.textlength("VisualCommand", font=title_font) > room:      # shrink to fit the card
+        title_px -= 2
+        title_font = font("segoeuib.ttf", title_px)
+    sub_font = font("seguisb.ttf", sub_px)
+    line = round(sub_px * 1.42)
+    block = title_px + round(title_px * 0.42) + line * len(SUBTITLE)
+    top = (h - block) // 2 - round(title_px * 0.22)           # Segoe's ascent padding
+    d.text((text_x, top), "VisualCommand", font=title_font, fill="white")
+    y = top + title_px + round(title_px * 0.58)
+    for text in SUBTITLE:
+        d.text((text_x + 3, y), text, font=sub_font, fill=(214, 245, 226))
+        y += line
+
+    if radius:
+        corners = Image.new("L", (w, h), 0)
+        ImageDraw.Draw(corners).rounded_rectangle((0, 0, w - 1, h - 1), radius, fill=255)
+        img.putalpha(corners)
+    return img
+
+
+def banner() -> None:
+    # README capsule, same size and shape as vocalworks-capsule.png (shown at half size)
+    _card(920, 430, 280, 66, 386, 84, 30, radius=36).save(OUT / "capsule.png", optimize=True)
+    # Website hero / link preview, 1200x627 like the other project pages
+    _card(1200, 627, 280, 66, 400, 104, 30).convert("RGB").save(OUT / "preview.png",
+                                                                  optimize=True)
 
 
 # --- UI screenshots -------------------------------------------------------------------
