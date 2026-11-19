@@ -59,10 +59,18 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: 
 
 [Run]
 Filename: "{app}\{#MyAppExe}"; Description: "Launch {#MyAppName} now"; Flags: nowait postinstall skipifsilent
+; Update started from inside the app (silent install with /RESTARTAPP=1): start the
+; new version again in the tray once the files are in place.
+Filename: "{app}\{#MyAppExe}"; Parameters: "--tray"; Flags: nowait; Check: ShouldRestartApp
 
 [Code]
 var
   UpgradeChecked, WasInstalled: Boolean;
+
+function ShouldRestartApp(): Boolean;
+begin
+  Result := ExpandConstant('{param:RESTARTAPP|0}') = '1';
+end;
 
 function IsUpgrade(): Boolean;
 begin

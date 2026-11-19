@@ -39,8 +39,10 @@ PRIVACY_TEXT = (
     "VisualCommand runs entirely on this PC.\n\n"
     "•  Camera frames are analysed in memory and dropped straight away. They are never "
     "saved, logged or sent anywhere, and the camera preview is not recorded.\n"
-    "•  The hand-tracking model is bundled with the app and loaded from disk; the app "
-    "makes no network connections.\n"
+    "•  The hand-tracking model is bundled with the app and loaded from disk. The app only "
+    "goes online when you check for updates (the button in General, or the once-a-day check "
+    "if you turn it on): it asks GitHub for the latest release and, if you choose to update, "
+    "downloads the installer. Nothing about you or your gestures is sent.\n"
     "•  When tracking is off, paused or the PC is locked, the camera is released and its "
     "light goes off.\n"
     "•  The only files written are your settings (config.json), a small text log of "
@@ -145,12 +147,17 @@ class SettingsWindow:
             parts.append(f"Last: {self.app.last_event}")
         self.status.configure(text="   ·   ".join(parts))
 
-    # --- gestures tab -----------------------------------------------------------------
-    def _build_gestures(self, parent) -> ttk.Frame:
+    # --- scrolling tab content ----------------------------------------------------------
+    @staticmethod
+    def _scrollable(parent, padding) -> tuple[ttk.Frame, ttk.Frame, tk.Canvas]:
+        """(outer frame for the notebook, inner frame to fill, its canvas).
+
+        Tabs scroll when their content is taller than the window (small screens).
+        """
         outer = ttk.Frame(parent)
         canvas = tk.Canvas(outer, highlightthickness=0, borderwidth=0)
         scroll = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
-        body = ttk.Frame(canvas, padding=(12, 8))
+        body = ttk.Frame(canvas, padding=padding)
         body.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
         win = canvas.create_window((0, 0), window=body, anchor="nw")
         canvas.bind("<Configure>", lambda e: canvas.itemconfigure(win, width=e.width))
@@ -162,7 +169,11 @@ class SettingsWindow:
             canvas.yview_scroll(int(-e.delta / 120), "units")
         canvas.bind("<Enter>", lambda e: canvas.bind_all("<MouseWheel>", on_wheel))
         canvas.bind("<Leave>", lambda e: canvas.unbind_all("<MouseWheel>"))
+        return outer, body, canvas
 
+    # --- gestures tab -----------------------------------------------------------------
+    def _build_gestures(self, parent) -> ttk.Frame:
+        outer, body, canvas = self._scrollable(parent, (12, 8))
         body.columnconfigure(1, weight=1)
         self._gesture_body = body
         self._gesture_canvas = canvas
@@ -284,8 +295,9 @@ class SettingsWindow:
 
     # --- general tab ------------------------------------------------------------------
     def _build_general(self, parent) -> ttk.Frame:
-        f = ttk.Frame(parent, padding=16)
+        outer, f, _canvas = self._scrollable(parent, 16)
         f.columnconfigure(1, weight=1)
+        self._general_outer = outer
         r = 0
 
         self.autostart_var = tk.BooleanVar(value=winutil.autostart_enabled())
@@ -402,7 +414,41 @@ class SettingsWindow:
                           "24 hours. Nothing is sent anywhere; you can share the folder to help "
                           "tune false triggers.", style="Desc.TLabel", wraplength=520
                   ).grid(row=r, column=1, columnspan=2, sticky="w")
-        return f
+        r += 1
+
+        ttk.Separator(f).grid(row=r, column=0, columnspan=3, sticky="ew", pady=12)
+        r += 1
+        ttk.Label(f, text="Updates").grid(row=r, column=0, sticky="w", pady=4)
+        self.update_msg = ttk.Label(f, text=f"You have version {__version__}.")
+        self.update_msg.grid(row=r, column=1, sticky="w")
+        self.update_btn = ttk.Button(f, text="Check for updates", command=self._update_clicked)
+        self.update_btn.grid(row=r, column=2, sticky="e")
+        r += 1
+        auto = tk.BooleanVar(value=self.cfg.get("auto_update_check", False))
+        ttk.Checkbutton(f, text="Check automatically once a day", variable=auto,
+                        command=lambda: self.cfg.set("auto_update_check", auto.get())
+                        ).grid(row=r, column=1, sticky="w")
+        r += 1
+        ttk.Label(f, text="Checking asks GitHub for the latest release; it's the only time the app "
+                          "goes online, and nothing about you is sent. Updating downloads the "
+                          "installer, checks it's the published file, and restarts the app.",
+                  style="Desc.TLabel", wraplength=520).grid(row=r, column=1, columnspan=2, sticky="w")
+        return outer
+
+    def _update_clicked(self) -> None:
+        if self.app.update_state.get("status") == "available":
+            self.app.start_update()
+        else:
+            self.app.check_for_updates(manual=True)
+
+    def refresh_update(self) -> None:
+        """Show the update check / download state (called on the Tk thread)."""
+        st = self.app.update_state
+        status = st.get("status", "idle")
+        self.update_msg.configure(text=st.get("message") or f"You have version {__version__}.")
+        busy = status in ("checking", "downloading", "installing")
+        self.update_btn.configure(text="Update now" if status == "available" else "Check for updates")
+        self.update_btn.state(["disabled"] if busy else ["!disabled"])
 
     # --- sensitivity tab ----------------------------------------------------------------
     def _build_sensitivity(self, parent) -> ttk.Frame:

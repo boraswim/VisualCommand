@@ -15,7 +15,8 @@ fist and your microphone mutes; flash a peace sign and the PC locks. You pick wh
 VisualCommand sits quietly in the system tray (the **^** at the bottom right of the taskbar) and
 watches for a small set of hand poses. **Everything runs on your own PC.** Hand tracking uses Google's
 [MediaPipe](https://github.com/google-ai-edge/mediapipe) model, which ships inside the app. There's no
-account, no cloud, no network connection, and **no camera picture is ever saved**.
+account and no cloud, it only goes online when you ask it to check for updates, and **no camera picture
+is ever saved**.
 
 <p align="center">
   <img src="docs/images/settings_gestures.png" alt="The Gestures tab: each hand pose with the action it runs" width="640" />
@@ -24,8 +25,9 @@ account, no cloud, no network connection, and **no camera picture is ever saved*
 ## Why it's nice to live with
 
 - **Private by design.** Camera frames are analysed in memory and dropped straight away. They're never
-  written to disk, logged or sent anywhere, and the app opens no network connections at all. A test
-  fails the build if code that saves images or goes online ever creeps in.
+  written to disk, logged or sent anywhere. The only network access is the update check, and only when
+  you ask for it. Tests fail the build if code that saves images creeps in, or if anything other than
+  the updater tries to go online.
 - **Only deliberate gestures count.** A gesture has to be held steadily for a moment, with your hand
   raised into the view and clearly shown to the camera. A hand resting on the desk, holding a cup or
   propping up your chin doesn't trigger anything. Every rule was tuned on real recordings of real
@@ -106,7 +108,10 @@ open your screenshots or the trigger logs, or quit.
 
 - **Camera frames stay in memory** for one analysis step and are then dropped. The preview window is
   not recorded either.
-- **No network.** The hand model is bundled and loaded from disk; the app never goes online.
+- **Offline unless you check for updates.** The hand model is bundled and loaded from disk. The app
+  only goes online when you click **Check for updates** (or turn on the once-a-day check, which is off
+  by default): it asks GitHub for the latest release and, if you choose to update, downloads the
+  installer. Nothing about you or your gestures is sent.
 - **The camera is released** whenever tracking is off or paused and while the PC is locked.
 - **What is written to disk:** your settings and a small text log (gesture names only) in
   `%APPDATA%\VisualCommand`, the screenshots you ask for, and the **trigger log**: each time a
@@ -124,8 +129,11 @@ open your screenshots or the trigger logs, or quit.
    Run anyway**.
 3. Start VisualCommand. It opens straight into the tray.
 
-Running a newer installer updates the app in place and keeps your settings. Uninstall it from
-**Settings → Apps**; you'll be asked whether to delete your settings too.
+**Updating:** click **Check for updates** in the **General** tab (or the tray menu), then **Update
+now**. VisualCommand downloads the new installer from this repository's releases, checks it matches
+the published checksum, installs it and restarts, keeping your settings. You can also turn on a check
+once a day. Running a newer installer by hand does the same. Uninstall it from **Settings → Apps**;
+you'll be asked whether to delete your settings too.
 
 You'll need Windows 10 or 11 (64-bit) and a webcam.
 
@@ -209,6 +217,7 @@ against the current rules.
 | `visualcommand/lighting.py` | Lighting check and in-memory brightening for dim or backlit rooms |
 | `visualcommand/settings_ui.py`, `tray.py`, `toast.py` | Settings window, tray icon, popups |
 | `visualcommand/triggerlog.py` | The 24-hour trigger log |
+| `visualcommand/updater.py` | Update check and install from GitHub releases (the only network code) |
 | `visualcommand/config.py`, `winutil.py` | Settings file and migrations; Windows helpers (single instance, lock state, autostart) |
 | `installer/VisualCommand.iss`, `VisualCommand.spec`, `scripts/build.ps1` | Packaging |
 | `scripts/` | Developer tools: model download, icon, sounds, README images, recorders and replays |

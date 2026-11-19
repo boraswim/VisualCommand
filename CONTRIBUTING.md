@@ -38,7 +38,9 @@ A few principles shape every change:
 - **Nothing visual is kept.** Camera frames live in memory for one analysis step and are dropped.
   Never save, log or send a frame. `tests/test_privacy.py` fails the build on code that writes images,
   records video or opens network connections.
-- **Fully local.** No network access at runtime. The hand model ships with the app.
+- **Local by default.** The hand model ships with the app. The only network code is the update check in
+  `visualcommand/updater.py`, which runs only when the user asks; `tests/test_privacy.py` fails if
+  anything else imports network libraries.
 - **Measure, then change a rule.** Gesture limits come from real recordings, not guesses. Before
   tightening or loosening a rule, record the pose (and everyday hand movement) with
   `scripts/diagnose_false_triggers.py` or `scripts/diagnose_poses.py`, replay it, and put the measured

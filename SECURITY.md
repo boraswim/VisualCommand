@@ -29,7 +29,11 @@ report:
 
 - **Camera data:** any way a camera frame could be written to disk, logged, kept in memory longer than
   one analysis step, or sent anywhere.
-- **Network access:** the app is meant to make no network connections at all.
+- **Network access and updates:** the only network code is the update check in
+  `visualcommand/updater.py`, which runs only when the user asks (button, or an opt-in daily check). It
+  must only contact this repository on GitHub, send nothing about the user, and run an installer only
+  after it matches the size and SHA-256 published for the release. Ways to make it download or run
+  something else, or to send data, are in scope.
 - **Actions:** "Open app / file / command" runs what you type, and power actions shut down, restart or
   sleep the PC. Ways to make an action run something the user didn't set, or to skip the power
   actions' countdown, are in scope.

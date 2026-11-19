@@ -24,6 +24,8 @@ from visualcommand.winutil import SingleInstance, repair_autostart, set_dpi_awar
 log = logging.getLogger(APP_NAME)
 
 PURGE_EVERY_MS = 30 * 60 * 1000
+AUTO_UPDATE_TICK_MS = 60 * 60 * 1000      # look once an hour whether a daily check is due
+AUTO_UPDATE_FIRST_MS = 2 * 60 * 1000      # first look shortly after start
 
 
 def _setup_logging(verbose: bool) -> None:
@@ -65,6 +67,7 @@ class App:
         self.root.withdraw()
         self.ui = None
         self.toast = None
+        self.update_state: dict = {"status": "idle", "release": None, "message": ""}
         self.tracker = Tracker(self)
         self.tray = Tray(self)
 
@@ -98,25 +101,87 @@ class App:
         self.post(lambda: self._ui().show())
 
     def notify(self, message: str, title: str = APP_NAME, error: bool = False,
-               reveal=None) -> None:
+               reveal=None, on_click=None, click_hint: str = "", always: bool = False) -> None:
         """Show the app's own popup (replaces any popup already showing).
 
-        Errors are always shown; action confirmations only if enabled in settings.
-        With `reveal` (a file path), clicking the popup opens its folder with the
-        file selected.
+        Errors (and `always` popups) are always shown; action confirmations only if
+        enabled in settings. With `reveal` (a file path), clicking the popup opens its
+        folder with the file selected; `on_click` runs anything else on click.
         """
-        if not error and not self.cfg.get("notifications", True):
+        if not (error or always) and not self.cfg.get("notifications", True):
             return
-        on_click = None
-        if reveal is not None:
+        if reveal is not None and on_click is None:
             from visualcommand.actions.system import reveal_in_explorer
             on_click = lambda: reveal_in_explorer(reveal)  # noqa: E731
+            click_hint = click_hint or "Click to open the folder"
 
         def show():
             self._toast().show(title, message, "error" if error else "info",
-                               on_click=on_click,
-                               click_hint="Click to open the folder" if on_click else "")
+                               on_click=on_click, click_hint=click_hint if on_click else "")
         self.post(show)
+
+    # --- updates (the only network use; only when the user asks) ------------------------
+    def check_for_updates(self, manual: bool = True) -> None:
+        """Ask GitHub for a newer release, in the background."""
+        if self.update_state["status"] in ("checking", "downloading", "installing"):
+            return
+        self._set_update(status="checking", message="Checking for updates…")
+
+        def work():
+            from visualcommand import updater
+            try:
+                release = updater.check()
+            except Exception as exc:
+                log.warning("Update check failed: %s", exc)
+                self._set_update(status="error", message="Couldn't reach GitHub. Try again later.")
+                return
+            finally:
+                self.cfg.set("last_update_check", time.time())
+            if release is None:
+                self._set_update(status="uptodate", message=f"You have the latest version ({__version__}).")
+                return
+            self._set_update(status="available", release=release,
+                             message=f"Version {release.version} is available (you have {__version__}).")
+            self.notify(f"Version {release.version} is ready to install.",
+                        title=f"{APP_NAME} update available", always=True,
+                        on_click=self.start_update, click_hint="Click to update now")
+        threading.Thread(target=work, name="update-check", daemon=True).start()
+
+    def start_update(self) -> None:
+        """Download the new installer, verify it, run it and quit (it restarts the app)."""
+        release = self.update_state.get("release")
+        if release is None or self.update_state["status"] in ("downloading", "installing"):
+            return
+
+        def work():
+            from visualcommand import updater
+            try:
+                self._set_update(status="downloading", message="Downloading the update… 0%")
+                path = updater.download(release, progress=lambda p: self._set_update(
+                    status="downloading", message=f"Downloading the update… {round(p * 100)}%"))
+                self._set_update(status="installing", message="Installing… VisualCommand restarts by itself.")
+                updater.install(path)
+            except Exception as exc:
+                log.exception("Update failed")
+                self._set_update(status="error", message=f"Update failed: {exc}")
+                self.notify(str(exc), title="Update failed", error=True)
+                return
+            self.post(self.quit)       # the installer closes and replaces the app anyway
+        threading.Thread(target=work, name="update", daemon=True).start()
+
+    def _set_update(self, **changes) -> None:
+        self.update_state.update(changes)
+        if self.ui is not None:
+            self.post(self.ui.refresh_update)
+
+    def _auto_update_tick(self) -> None:
+        """Once a day, if the user turned that on."""
+        from visualcommand.updater import CHECK_EVERY_SECONDS
+        if (self.cfg.get("auto_update_check", False)
+                and time.time() - float(self.cfg.get("last_update_check", 0)) >= CHECK_EVERY_SECONDS):
+            self.check_for_updates(manual=False)
+        if not self._quitting:
+            self.root.after(AUTO_UPDATE_TICK_MS, self._auto_update_tick)
 
     def _toast(self):
         if self.toast is None:
@@ -318,6 +383,7 @@ class App:
     def run(self, instance: SingleInstance) -> None:
         repair_autostart()
         self._purge_trigger_logs()
+        self.root.after(AUTO_UPDATE_FIRST_MS, self._auto_update_tick)
         self.tracker.start()
         self.tray.start()
         self.tray.refresh()

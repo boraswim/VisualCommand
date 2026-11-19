@@ -23,6 +23,10 @@ DEFAULTS: dict[str, Any] = {
     # Keep a 24-hour log of triggered gestures (hand-tracking numbers only, no images)
     # in %APPDATA%\VisualCommand\trigger_logs, for finding false triggers.
     "trigger_log": True,
+    # Check GitHub for a new version once a day. OFF by default: the app only goes
+    # online when the user asks (this, or the "Check for updates" button).
+    "auto_update_check": False,
+    "last_update_check": 0.0,
     "camera_index": 0,
     # Flip the camera picture before analysis. MediaPipe's hand model wants the
     # camera's natural (unmirrored) view, which most webcams deliver, so this is off;

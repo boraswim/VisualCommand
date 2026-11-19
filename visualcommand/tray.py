@@ -34,6 +34,10 @@ class Tray:
                  lambda: app.pause(0 if app.is_paused() else 10)),
             Item("Open screenshots folder", lambda: os.startfile(screenshots_dir())),
             Item("Open trigger logs", lambda: app.open_trigger_logs()),
+            Item(lambda _: ("Update to " + app.update_state["release"].version)
+                 if app.update_state.get("status") == "available" else "Check for updates",
+                 lambda: app.start_update() if app.update_state.get("status") == "available"
+                 else app.check_for_updates(manual=True)),
             Menu.SEPARATOR,
             Item("Quit", lambda: app.quit()),
         )
