@@ -212,7 +212,8 @@ class SettingsWindow:
         ttk.Label(body, text=g.icon, font=("Segoe UI Emoji", 16), width=3).grid(
             row=row, column=0, rowspan=2, sticky="w")
         ttk.Label(body, text=g.name, style="Name.TLabel").grid(row=row, column=1, sticky="w")
-        ttk.Label(body, text=g.description, style="Desc.TLabel").grid(
+        # wrap so long descriptions don't run under the action dropdown
+        ttk.Label(body, text=g.description, style="Desc.TLabel", wraplength=420).grid(
             row=row + 1, column=1, sticky="w", pady=(0, 6))
 
         var = tk.StringVar()

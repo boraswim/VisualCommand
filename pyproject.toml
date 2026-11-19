@@ -6,7 +6,18 @@ build-backend = "setuptools.build_meta"
 name = "visualcommand"
 dynamic = ["version"]
 description = "Local webcam hand-gesture shortcuts for Windows, living in the system tray."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Bora Sevim" }]
 requires-python = ">=3.10,<3.13"
+keywords = ["gestures", "hand tracking", "webcam", "mediapipe", "windows", "tray", "shortcuts"]
+classifiers = [
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Environment :: Win32 (MS Windows)",
+    "Topic :: Desktop Environment",
+]
 dependencies = [
     "mediapipe>=0.10.14",
     "opencv-contrib-python>=4.9",  # same build MediaPipe pulls in; don't add opencv-python next to it
@@ -18,6 +29,10 @@ dependencies = [
     "comtypes>=1.2",
     "psutil>=5.9",
 ]
+
+[project.urls]
+Homepage = "https://github.com/boraswim/VisualCommand"
+Issues = "https://github.com/boraswim/VisualCommand/issues"
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "pyinstaller>=6.6"]

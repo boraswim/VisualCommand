@@ -51,6 +51,16 @@ def _work_area() -> tuple[int, int, int, int]:
     return rect.left, rect.top, rect.right, rect.bottom
 
 
+def display_text(text: str) -> str:
+    """Make emoji sequences drawable with the popup's font.
+
+    Tk can't combine characters like the keycap mark (U+20E3): "3️⃣" showed as "3 □".
+    Dropping the combining keycap and the emoji-style selector (U+FE0F) leaves a
+    plain glyph ("3", "✌") that the font can draw.
+    """
+    return text.replace("⃣", "").replace("️", "")
+
+
 def countdown_text(action: str, remaining: float) -> str:
     return f"{action} in {max(0, int(remaining + 0.999))} s"
 
@@ -165,7 +175,7 @@ class Toast:
             side="left", padx=(12, 8), pady=12, anchor="n")
         text = tk.Frame(card, bg=BG)
         text.pack(side="left", fill="both", expand=True, pady=10, padx=(0, 14))
-        tk.Label(text, text=title, bg=BG, fg=TITLE_FG, font=("Segoe UI Semibold", 10),
+        tk.Label(text, text=display_text(title), bg=BG, fg=TITLE_FG, font=("Segoe UI Semibold", 10),
                  anchor="w", justify="left", wraplength=WIDTH - 80).pack(fill="x")
         return win, card, text
 

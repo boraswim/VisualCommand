@@ -73,6 +73,14 @@ def test_newer_confirmation_cancels_the_older_one(root):
     assert done == ["cancelA", "execB"]
 
 
+def test_popup_titles_drop_emoji_parts_the_font_cannot_draw():
+    """Regression: the keycap icon 3️⃣ showed as '3 □' in popups."""
+    from visualcommand.toast import display_text
+    assert display_text("3️⃣ Three fingers") == "3 Three fingers"
+    assert display_text("✌️ Peace sign") == "✌ Peace sign"
+    assert display_text("👍 Thumbs up") == "👍 Thumbs up"
+
+
 def test_countdown_text_rounds_up():
     assert countdown_text("Shut down", 10) == "Shut down in 10 s"
     assert countdown_text("Shut down", 9.2) == "Shut down in 10 s"

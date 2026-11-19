@@ -1,0 +1,69 @@
+name: Bug report
+description: Something in VisualCommand doesn't work as it should
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please never attach screenshots or video of your camera view.
+        For a gesture that fired by mistake (or didn't fire), the trigger log files are far more useful:
+        they hold only hand-tracking numbers. Security problems go through the Security tab instead (see SECURITY.md).
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, step by step, and what went wrong.
+      placeholder: "1. Mapped Peace sign to Lock PC\n2. Rested my hand on the desk while typing\n3. The PC locked"
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where
+      options:
+        - "A gesture fired when I didn't make it"
+        - "A gesture I made wasn't recognised"
+        - "An action didn't do the right thing"
+        - "Tray icon, settings window or popups"
+        - "Camera (doesn't start, wrong camera, slow)"
+        - "Installing or starting with Windows"
+        - "Something else"
+    validations:
+      required: true
+  - type: input
+    id: gesture
+    attributes:
+      label: Gesture and action involved (if any)
+      placeholder: "Thumbs up → Take screenshot"
+  - type: input
+    id: version
+    attributes:
+      label: VisualCommand version
+      description: Shown at the bottom of the Privacy tab.
+      placeholder: "0.1.22"
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: Windows version and webcam
+      placeholder: "Windows 11, Logitech C920 (or built-in laptop camera)"
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: End of visualcommand.log
+      description: From %APPDATA%\VisualCommand; the last 50 lines or so are usually enough.
+      render: text
+  - type: markdown
+    attributes:
+      value: |
+        **Trigger logs:** if this is about a gesture, zip the matching files from tray menu → Open trigger logs
+        (each is a few KB of hand-tracking numbers, deleted automatically after 24 hours) and drag the zip in below.

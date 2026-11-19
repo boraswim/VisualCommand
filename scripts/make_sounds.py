@@ -1,14 +1,21 @@
-"""Developer tool: build the app's notification sounds from the CC0 Kenney library.
+"""Developer tool: build the app's notification sounds from Kenney's CC0 audio.
 
-Source: Kenney "Interface Sounds" (CC0, https://kenney.nl), in D:/Workshop/SFX.
-Only the processed WAVs in assets/sounds/ go into the repo. Needs ffmpeg on PATH.
+Source: Kenney "Interface Sounds" (CC0, https://kenney.nl/assets/interface-sounds).
+Download and unzip it, then point this script at the folder:
+
+    python scripts/make_sounds.py path/to/kenney_interface-sounds
+
+(or set VISUALCOMMAND_SFX_LIBRARY). Only the processed WAVs in assets/sounds/ go
+into the repo; they are already there, so you only need this to change a sound.
+Needs ffmpeg on PATH.
 """
 from __future__ import annotations
 
+import argparse
+import os
 import subprocess
 from pathlib import Path
 
-LIB = Path("D:/Workshop/SFX/Kenney-Audio")
 OUT = Path(__file__).resolve().parent.parent / "assets" / "sounds"
 
 SOUNDS = {
@@ -20,17 +27,24 @@ SOUNDS = {
 }
 
 
-def find(name: str) -> Path:
-    hits = list(LIB.rglob(name))
+def find(library: Path, name: str) -> Path:
+    hits = list(library.rglob(name))
     if not hits:
-        raise FileNotFoundError(f"{name} not found under {LIB}")
+        raise FileNotFoundError(f"{name} not found under {library}")
     return hits[0]
 
 
 def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("library", nargs="?", default=os.environ.get("VISUALCOMMAND_SFX_LIBRARY"),
+                    help="folder containing Kenney's Interface Sounds (.ogg files)")
+    args = ap.parse_args()
+    if not args.library:
+        ap.error("give the Kenney Interface Sounds folder (or set VISUALCOMMAND_SFX_LIBRARY)")
+    library = Path(args.library)
     OUT.mkdir(parents=True, exist_ok=True)
     for out_name, (src_name, gain) in SOUNDS.items():
-        src, dst = find(src_name), OUT / out_name
+        src, dst = find(library, src_name), OUT / out_name
         # mono, 44.1 kHz, 16-bit; quieter than the raw pack; 30 ms fade-out to avoid clicks
         cmd = ["ffmpeg", "-y", "-loglevel", "error", "-i", str(src),
                "-ac", "1", "-ar", "44100", "-sample_fmt", "s16",

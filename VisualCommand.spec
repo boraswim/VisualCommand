@@ -50,6 +50,9 @@ a = Analysis(
     hiddenimports=hiddenimports,
     excludes=["pytest", "IPython", "notebook", "PyQt5", "PySide6"],
     noarchive=False,
+    # pystray is LGPL-3.0: ship it as plain .py files (in _internal\pystray) rather than
+    # inside the archive, so users can replace it with their own version.
+    module_collection_mode={"pystray": "py"},
 )
 pyz = PYZ(a.pure)
 exe = EXE(
